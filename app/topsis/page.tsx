@@ -146,14 +146,25 @@ export default function TOPSISPage() {
 
       driverData.forEach((driver) => {
         const row: number[] = []
-        // Yapılan Kilometre verisini bul
-        const distanceKeys = Object.keys(driver).filter(
-          (key) => key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km"),
-        )
         let distanceTraveled = 0
-        if (distanceKeys.length > 0) {
-          // Birden fazla varsa, en yüksek olanı al
-          distanceTraveled = Math.max(...distanceKeys.map(key => Number(driver[key]) || 0))
+
+        // Yapılan Kilometre verisini bul (önce tam eşleşme, sonra kısmi eşleşme)
+        const excelKeys = Object.keys(driver)
+        // Tam eşleşme öncelikli
+        let distanceKey = excelKeys.find(
+          (key) => key.trim().toLowerCase() === "yapılan kilometre" || key.trim().toLowerCase() === "yapılan km"
+        )
+        // Tam eşleşme yoksa, kısmi eşleşme (ama oran/ratio içermeyen)
+        if (!distanceKey) {
+          distanceKey = excelKeys.find(
+            (key) =>
+              (key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km")) &&
+              !key.toLowerCase().includes("oran") &&
+              !key.toLowerCase().includes("ratio")
+          )
+        }
+        if (distanceKey) {
+          distanceTraveled = Number(driver[distanceKey]) || 0
         }
         distanceData.push(distanceTraveled)
 
