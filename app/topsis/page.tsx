@@ -142,7 +142,8 @@ export default function TOPSISPage() {
 
       // Excel verilerinden kriter değerlerini çıkar
       const matrix: number[][] = []
-      const distanceData: number[] = []
+      // const distanceData: number[] = []
+      const distanceData: Record<string, number> = {}
 
       driverData.forEach((driver) => {
         const row: number[] = []
@@ -150,11 +151,9 @@ export default function TOPSISPage() {
 
         // Yapılan Kilometre verisini bul (önce tam eşleşme, sonra kısmi eşleşme)
         const excelKeys = Object.keys(driver)
-        // Tam eşleşme öncelikli
         let distanceKey = excelKeys.find(
           (key) => key.trim().toLowerCase() === "yapılan kilometre" || key.trim().toLowerCase() === "yapılan km"
         )
-        // Tam eşleşme yoksa, kısmi eşleşme (ama oran/ratio içermeyen)
         if (!distanceKey) {
           distanceKey = excelKeys.find(
             (key) =>
@@ -166,7 +165,9 @@ export default function TOPSISPage() {
         if (distanceKey) {
           distanceTraveled = Number(driver[distanceKey]) || 0
         }
-        distanceData.push(distanceTraveled)
+        // Sürücü Sicil No'sunu anahtar olarak kullan
+        const sicilKey = String(driver[Object.keys(driver)[0]])
+        distanceData[sicilKey] = distanceTraveled
 
         // Her kriter için Excel'den değer bul
         leafCriteria.forEach((criterion) => {

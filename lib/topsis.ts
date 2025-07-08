@@ -117,10 +117,10 @@ function normalizeMatrix(matrix: number[][]): number[][] {
   return normalizedMatrix
 }
 
-export function addDistanceDataToResults(results: TOPSISResult[], distanceData: number[]): TOPSISResult[] {
-  const updatedResults = results.map((result, index) => ({
+export function addDistanceDataToResults(results: TOPSISResult[], distanceData: Record<string, number>): TOPSISResult[] {
+  const updatedResults = results.map((result) => ({
     ...result,
-    distanceTraveled: distanceData[index] || 0,
+    distanceTraveled: distanceData[result.alternative] || 0,
   }))
 
   // Re-sort with distance tie-breaking
