@@ -33,6 +33,8 @@ export default function TOPSISPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAnalysisComplete, setIsAnalysisComplete] = useState(false)
+  const [minDistance, setMinDistance] = useState<number | "">("")
+  const [filteredDriverData, setFilteredDriverData] = useState<DriverData[]>([])
 
   const leafCriteria = getLeafCriteria()
 
@@ -113,8 +115,49 @@ export default function TOPSISPage() {
     reader.readAsArrayBuffer(file)
   }, [])
 
+  // driverData değiştiğinde filtre uygula
+  useEffect(() => {
+    if (minDistance === "" || isNaN(Number(minDistance))) {
+      setFilteredDriverData(driverData)
+    } else {
+      // Sadece minimum kilometreyi geçenler
+      setFilteredDriverData(
+        driverData.filter((driver: DriverData) => {
+          const excelKeys = Object.keys(driver)
+          let distanceKey = excelKeys.find(
+            (key) => key.trim().toLowerCase() === "yapılan kilometre" || key.trim().toLowerCase() === "yapılan km"
+          )
+          if (!distanceKey) {
+            distanceKey = excelKeys.find(
+              (key) =>
+                (key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km")) &&
+                !key.toLowerCase().includes("oran") &&
+                !key.toLowerCase().includes("ratio")
+            )
+          }
+          if (distanceKey) {
+            const distanceTraveled = Number(driver[distanceKey]) || 0
+            return distanceTraveled >= Number(minDistance)
+          }
+          return false
+        })
+      )
+    }
+  }, [driverData, minDistance])
+
+  const handleMinDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    if (value === "") setMinDistance("")
+    else setMinDistance(Number(value))
+  }
+
+  const handleApplyFilter = () => {
+    // Sadece filtreyi tetiklemek için, useEffect zaten filtreliyor
+    setFilteredDriverData((prev: DriverData[]) => [...prev])
+  }
+
   const runTOPSISAnalysis = useCallback(() => {
-    if (driverData.length === 0 || Object.keys(averageWeights).length === 0) {
+    if (filteredDriverData.length === 0 || Object.keys(averageWeights).length === 0) {
       setError("Sürücü verisi ve ağırlıklar gerekli")
       return
     }
@@ -124,8 +167,8 @@ export default function TOPSISPage() {
 
     try {
       // Excel'den sürücü isimlerini al (ilk sütun genellikle Sicil No)
-      const firstColumnKey = Object.keys(driverData[0])[0]
-      const alternatives = driverData.map((driver) => String(driver[firstColumnKey] || ""))
+      const firstColumnKey = Object.keys(filteredDriverData[0])[0]
+      const alternatives = filteredDriverData.map((driver) => String(driver[firstColumnKey] || ""))
 
       // Kriter isimlerini ve tiplerini al
       const criteriaNames: string[] = []
@@ -145,7 +188,7 @@ export default function TOPSISPage() {
       // const distanceData: number[] = []
       const distanceData: Record<string, number> = {}
 
-      driverData.forEach((driver) => {
+      filteredDriverData.forEach((driver: DriverData) => {
         const row: number[] = []
         let distanceTraveled = 0
 
@@ -215,7 +258,7 @@ export default function TOPSISPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [driverData, averageWeights, leafCriteria])
+  }, [filteredDriverData, averageWeights, leafCriteria])
 
   const exportResults = useCallback(() => {
     if (results.length === 0) return
@@ -226,7 +269,7 @@ export default function TOPSISPage() {
       // Ana sonuçlar sayfası
       const wsData = [
         ["Sıra", "Sürücü", "TOPSIS Puanı", "Yapılan KM"],
-        ...results.map((result) => [
+        ...results.map((result: TOPSISResult) => [
           result.rank,
           result.alternative,
           result.closenessCoefficient.toFixed(4),
@@ -352,6 +395,20 @@ export default function TOPSISPage() {
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                       <span className="text-sm font-medium">{driverData.length} sürücü verisi yüklendi</span>
+                    </div>
+                    <div className="flex items-center gap-4 mb-4">
+                      <Label htmlFor="min-distance">Yapılan Minimum Kilometre</Label>
+                      <Input
+                        id="min-distance"
+                        type="number"
+                        min={0}
+                        value={minDistance}
+                        onChange={handleMinDistanceChange}
+                        placeholder="Örn: 200"
+                        style={{ maxWidth: 150 }}
+                        disabled={isLoading}
+                      />
+                      <Button onClick={handleApplyFilter} disabled={isLoading} variant="outline">Filtrele</Button>
                     </div>
                     <Button
                       onClick={runTOPSISAnalysis}
