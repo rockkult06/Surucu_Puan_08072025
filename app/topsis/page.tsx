@@ -272,7 +272,7 @@ export default function TOPSISPage() {
         ...results.map((result: TOPSISResult) => [
           result.rank,
           result.alternative,
-          result.closenessCoefficient.toFixed(4),
+          result.closenessCoefficient.toFixed(8),
           result.distanceTraveled || 0,
         ]),
       ]
@@ -477,7 +477,7 @@ export default function TOPSISPage() {
                             </div>
                           </TableCell>
                           <TableCell className="font-medium">{result.alternative}</TableCell>
-                          <TableCell>{result.closenessCoefficient.toFixed(4)}</TableCell>
+                          <TableCell>{result.closenessCoefficient.toFixed(8)}</TableCell>
                           <TableCell>{result.distanceTraveled || 0}</TableCell>
                           <TableCell>
                             <Badge variant={result.rank <= 3 ? "default" : result.rank <= 10 ? "secondary" : "outline"}>
