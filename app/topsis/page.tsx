@@ -125,12 +125,12 @@ export default function TOPSISPage() {
         driverData.filter((driver: DriverData) => {
           const excelKeys = Object.keys(driver)
           let distanceKey = excelKeys.find(
-            (key) => key.trim().toLowerCase() === "yapılan kilometre" || key.trim().toLowerCase() === "yapılan km"
+            (key) => key.trim().toLowerCase() === "çalışılan saat" || key.trim().toLowerCase() === "çalışılan st"
           )
           if (!distanceKey) {
             distanceKey = excelKeys.find(
               (key) =>
-                (key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km")) &&
+                (key.toLowerCase().includes("saat") || key.toLowerCase().includes("st")) &&
                 !key.toLowerCase().includes("oran") &&
                 !key.toLowerCase().includes("ratio")
             )
@@ -195,12 +195,12 @@ export default function TOPSISPage() {
         // Yapılan Kilometre verisini bul (önce tam eşleşme, sonra kısmi eşleşme)
         const excelKeys = Object.keys(driver)
         let distanceKey = excelKeys.find(
-          (key) => key.trim().toLowerCase() === "yapılan kilometre" || key.trim().toLowerCase() === "yapılan km"
+          (key) => key.trim().toLowerCase() === "çalışılan saat" || key.trim().toLowerCase() === "çalışılan st"
         )
         if (!distanceKey) {
           distanceKey = excelKeys.find(
             (key) =>
-              (key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km")) &&
+              (key.toLowerCase().includes("saat") || key.toLowerCase().includes("st")) &&
               !key.toLowerCase().includes("oran") &&
               !key.toLowerCase().includes("ratio")
           )
@@ -268,7 +268,7 @@ export default function TOPSISPage() {
 
       // Ana sonuçlar sayfası
       const wsData = [
-        ["Sıra", "Sürücü", "TOPSIS Puanı", "Yapılan KM"],
+        ["Sıra", "Sürücü", "TOPSIS Puanı", "Çalışılan Saat"],
         ...results.map((result: TOPSISResult) => [
           result.rank,
           result.alternative,
@@ -397,7 +397,7 @@ export default function TOPSISPage() {
                       <span className="text-sm font-medium">{driverData.length} sürücü verisi yüklendi</span>
                     </div>
                     <div className="flex items-center gap-4 mb-4">
-                      <Label htmlFor="min-distance">Yapılan Minimum Kilometre</Label>
+                      <Label htmlFor="min-distance">Çalışılan Minimum Saat</Label>
                       <Input
                         id="min-distance"
                         type="number"
@@ -441,7 +441,7 @@ export default function TOPSISPage() {
                   TOPSIS Analiz Sonuçları
                 </CardTitle>
                 <CardDescription>
-                  Sürücü performans sıralaması (Aynı puana sahip sürücüler arasında yapılan kilometre verisi yüksek olan
+                  Sürücü performans sıralaması (Aynı puana sahip sürücüler arasında çalışılan saat verisi yüksek olan
                   üst sırada yer alır)
                 </CardDescription>
               </CardHeader>
@@ -453,7 +453,7 @@ export default function TOPSISPage() {
                         <TableHead className="w-16">Sıra</TableHead>
                         <TableHead>Sürücü</TableHead>
                         <TableHead>TOPSIS Puanı</TableHead>
-                        <TableHead>Yapılan KM</TableHead>
+                        <TableHead>Çalışılan Saat</TableHead>
                         <TableHead>Performans</TableHead>
                       </TableRow>
                     </TableHeader>

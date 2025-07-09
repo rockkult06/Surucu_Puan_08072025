@@ -404,7 +404,7 @@ export function calculateTOPSIS(
   results.sort((a, b) => {
     const diff = b.closenessCoefficient - a.closenessCoefficient
     if (Math.abs(diff) < 0.0001) {
-      // Eşitlik durumunda yapılan kilometre yüksek olan üstte
+      // Eşitlik durumunda çalışılan saat yüksek olan üstte
       return (b.distanceTraveled || 0) - (a.distanceTraveled || 0)
     }
     return diff
