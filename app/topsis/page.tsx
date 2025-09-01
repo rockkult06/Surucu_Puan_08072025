@@ -34,6 +34,8 @@ export default function TOPSISPage() {
   const [error, setError] = useState<string | null>(null)
   const [isAnalysisComplete, setIsAnalysisComplete] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
+  const [minDistance, setMinDistance] = useState<number | "">("")
+  const [filteredDriverData, setFilteredDriverData] = useState<DriverData[]>([])
 
   const leafCriteria = getLeafCriteria()
 
@@ -295,6 +297,47 @@ export default function TOPSISPage() {
       setIsLoading(false)
     }
   }, [driverData, averageWeights, leafCriteria])
+
+  // driverData değiştiğinde filtre uygula
+  useEffect(() => {
+    if (minDistance === "" || isNaN(Number(minDistance))) {
+      setFilteredDriverData(driverData)
+    } else {
+      // Sadece minimum saati geçenler
+      setFilteredDriverData(
+        driverData.filter((driver: DriverData) => {
+          const excelKeys = Object.keys(driver)
+          let distanceKey = excelKeys.find(
+            (key) => key.trim().toLowerCase() === "çalışılan saat" || key.trim().toLowerCase() === "çalışılan st"
+          )
+          if (!distanceKey) {
+            distanceKey = excelKeys.find(
+              (key) =>
+                (key.toLowerCase().includes("saat") || key.toLowerCase().includes("st")) &&
+                !key.toLowerCase().includes("oran") &&
+                !key.toLowerCase().includes("ratio")
+            )
+          }
+          if (distanceKey) {
+            const distanceTraveled = Number(driver[distanceKey]) || 0
+            return distanceTraveled >= Number(minDistance)
+          }
+          return false
+        })
+      )
+    }
+  }, [driverData, minDistance])
+
+  const handleMinDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    if (value === "") setMinDistance("")
+    else setMinDistance(Number(value))
+  }
+
+  const handleApplyFilter = () => {
+    // Sadece filtreyi tetiklemek için, useEffect zaten filtreliyor
+    setFilteredDriverData((prev: DriverData[]) => [...prev])
+  }
 
   const exportResults = useCallback(() => {
     if (results.length === 0) return
