@@ -287,7 +287,13 @@ export default function HierarchicalComparisonPage() {
       // Son adımsa, verileri kaydet
       if (userName) {
         try {
-          await saveAHPEvaluation(userName, criteriaWeights, globalWeights, consistencyResults, comparisonMatrices)
+          await saveAHPEvaluation({
+            user_name: userName,
+            comparison_matrices: comparisonMatrices,
+            local_weights: criteriaWeights,
+            global_weights: globalWeights,
+            consistency_results: consistencyResults,
+          })
           toast({
             title: "Değerlendirme Kaydedildi",
             description: "AHP değerlendirmeniz başarıyla kaydedildi.",
