@@ -225,7 +225,7 @@ export default function AboutPage() {
 
                     <div>
                       <h4 className="font-medium text-sm">Kaza Durumu</h4>
-                      <p className="text-xs text-gray-500">Çalışılan saate göre kaza sayısı (Maliyet)</p>
+                      <p className="text-xs text-gray-500">Yapılan km'ye göre kaza sayısı (Maliyet)</p>
                       <ul className="text-xs text-gray-400 ml-4 mt-1">
                         <li>• Ölümle Sonuçlanan Kaza</li>
                         <li>• Yaralanmalı Kaza</li>
@@ -235,7 +235,7 @@ export default function AboutPage() {
 
                     <div>
                       <h4 className="font-medium text-sm">Disiplin Durumu</h4>
-                      <p className="text-xs text-gray-500">Çalışılan saate göre disiplin cezası (Maliyet)</p>
+                      <p className="text-xs text-gray-500">Yapılan km'ye göre disiplin cezası (Maliyet)</p>
                       <ul className="text-xs text-gray-400 ml-4 mt-1">
                         <li>• 1. Derece Disiplin İhlali</li>
                         <li>• 2. Derece Disiplin İhlali</li>

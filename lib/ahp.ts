@@ -48,6 +48,13 @@ export function calculateWeights(matrix: number[][]): number[] {
 }
 
 /**
+ * Calculate AHP weights - alias for calculateWeights for compatibility
+ */
+export function calculateAHPWeights(matrix: number[][]): number[] {
+  return calculateWeights(matrix)
+}
+
+/**
  * Consistency ratio for a single comparison matrix.
  */
 export function checkConsistency(matrix: number[][], weights: number[]): ConsistencyResult {
@@ -404,7 +411,7 @@ export function calculateTOPSIS(
   results.sort((a, b) => {
     const diff = b.closenessCoefficient - a.closenessCoefficient
     if (Math.abs(diff) < 0.0001) {
-      // Eşitlik durumunda çalışılan saat yüksek olan üstte
+      // Eşitlik durumunda yapılan kilometre yüksek olan üstte
       return (b.distanceTraveled || 0) - (a.distanceTraveled || 0)
     }
     return diff

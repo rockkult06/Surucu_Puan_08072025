@@ -1,304 +1,351 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { ArrowLeft, Calculator, CheckCircle, AlertTriangle, Save, User } from "lucide-react"
+import { ArrowLeft, Scale, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
-import { criteriaHierarchy, getMainCriteria, getCriteriaById, initializeHierarchyData } from "@/lib/criteria-hierarchy"
-import { calculateHierarchicalAHP, sliderToAHPValue, ahpValueToSlider, type HierarchicalAHPResult } from "@/lib/ahp"
-import { saveAHPEvaluation, getAHPEvaluationByUser } from "@/lib/api-client"
+import { useRouter, useSearchParams } from "next/navigation"
+import {
+  criteriaHierarchy,
+  findCriterionById,
+  getChildrenCriteria,
+  getCriterionPath,
+  type Criterion,
+} from "@/lib/criteria-hierarchy"
+import { calculateAHPWeights, type ConsistencyResult } from "@/lib/ahp"
 import { UserLoginDialog } from "@/components/user-login-dialog"
+import { saveAHPEvaluation, getAHPEvaluationByUser } from "@/lib/api-client"
+import { useToast } from "@/hooks/use-toast"
+
+// Helper to convert slider value to AHP scale (1-9, 1/9-1)
+// Slider range: -8 to 8
+// AHP scale: 1/9, 1/8, ..., 1/2, 1, 2, ..., 8, 9
+const sliderToAHPValue = (sliderValue: number): number => {
+  if (sliderValue === 0) return 1
+  if (sliderValue > 0) return sliderValue + 1 // 1 -> 2, 8 -> 9
+  return 1 / (Math.abs(sliderValue) + 1) // -1 -> 1/2, -8 -> 1/9
+}
+
+// Helper to convert AHP value to slider value
+const ahpValueToSlider = (ahpValue: number): number => {
+  if (ahpValue === 1) return 0
+  if (ahpValue > 1) return ahpValue - 1 // 2 -> 1, 9 -> 8
+  return -(1 / ahpValue - 1) // 1/2 -> -1, 1/9 -> -8
+}
 
 export default function HierarchicalComparisonPage() {
-  const [hierarchyData, setHierarchyData] = useState<Record<string, number[][]>>({})
-  const [ahpResults, setAhpResults] = useState<HierarchicalAHPResult | null>(null)
-  const [currentStep, setCurrentStep] = useState(0)
-  const [isCalculating, setIsCalculating] = useState(false)
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
-  const [showLoginDialog, setShowLoginDialog] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [userModifiedSteps, setUserModifiedSteps] = useState<Set<string>>(new Set())
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { toast } = useToast()
 
-  // Karşılaştırma adımlarını tanımla
-  const comparisonSteps = [
-    { id: "main", name: "Ana Kriterler", description: "İdari ve Teknik Değerlendirme karşılaştırması" },
-    { id: "admin", name: "İdari Alt Kriterler", description: "İdari değerlendirme alt kriterlerinin karşılaştırması" },
-    { id: "overtime", name: "Fazla Mesai Kriterleri", description: "Fazla mesai türlerinin karşılaştırması" },
-    { id: "accident", name: "Kaza Kriterleri", description: "Kaza türlerinin karşılaştırması" },
-    { id: "discipline", name: "Disiplin Kriterleri", description: "Disiplin derecelerinin karşılaştırması" },
-    {
-      id: "technical",
-      name: "Teknik Alt Kriterler",
-      description: "Teknik değerlendirme alt kriterlerinin karşılaştırması",
-    },
-  ]
+  const [userName, setUserName] = useState<string | null>(null)
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false)
 
+  const [currentStepIndex, setCurrentStepIndex] = useState(0)
+  const [comparisonMatrices, setComparisonMatrices] = useState<Record<string, number[][]>>({})
+  const [consistencyResults, setConsistencyResults] = useState<Record<string, ConsistencyResult>>({})
+  const [criteriaWeights, setCriteriaWeights] = useState<Record<string, number>>({}) // Local weights for each matrix
+  const [globalWeights, setGlobalWeights] = useState<Record<string, number>>({}) // Global weights for all leaf criteria
+
+  // Load user from localStorage on initial render
   useEffect(() => {
-    const initialData = initializeHierarchyData()
-    setHierarchyData(initialData)
-    // Başlangıçta hiçbir adım tamamlanmış olarak işaretlenmesin
-    setUserModifiedSteps(new Set())
+    const storedUserName = localStorage.getItem("ahp_user_name")
+    if (storedUserName) {
+      setUserName(storedUserName)
+      fetchUserData(storedUserName)
+    } else {
+      setIsLoginDialogOpen(true)
+    }
   }, [])
 
+  const fetchUserData = async (user: string) => {
+    try {
+      const evaluation = await getAHPEvaluationByUser(user)
+      if (evaluation) {
+        setComparisonMatrices(evaluation.hierarchy_data)
+        setConsistencyResults(evaluation.consistency_results)
+        setCriteriaWeights(evaluation.criteria_weights)
+        setGlobalWeights(evaluation.global_weights)
+        toast({
+          title: "Veriler Yüklendi",
+          description: `${user} kullanıcısının önceki değerlendirmeleri yüklendi.`,
+        })
+      } else {
+        toast({
+          title: "Bilgi",
+          description: `${user} için kayıtlı değerlendirme bulunamadı. Yeni bir değerlendirme başlatılıyor.`,
+        })
+      }
+    } catch (error) {
+      console.error("Kullanıcı verileri yüklenirken hata:", error)
+      toast({
+        title: "Hata",
+        description: "Önceki değerlendirmeler yüklenirken bir sorun oluştu.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleLogin = (name: string) => {
+    setUserName(name)
+    localStorage.setItem("ahp_user_name", name)
+    fetchUserData(name)
+  }
+
+  // Generate comparison steps dynamically
+  const comparisonSteps = useMemo(() => {
+    const steps: {
+      id: string
+      name: string
+      description: string
+      criteria: string[]
+      parentId: string | null
+    }[] = []
+
+    const traverse = (criteria: Criterion[], parentId: string | null) => {
+      if (criteria.length > 1) {
+        steps.push({
+          id: parentId || "main",
+          name: findCriterionById(parentId || "main")?.name || "Ana Kriterler",
+          description:
+            parentId === null
+              ? "İdari ve Teknik Değerlendirme karşılaştırması"
+              : `${findCriterionById(parentId)?.name} alt kriterlerinin karşılaştırması`,
+          criteria: criteria.map((c) => c.id),
+          parentId: parentId,
+        })
+      }
+      criteria.forEach((criterion) => {
+        if (criterion.children && criterion.children.length > 0) {
+          traverse(criterion.children, criterion.id)
+        }
+      })
+    }
+
+    traverse(criteriaHierarchy[0].children || [], criteriaHierarchy[0].id)
+    return steps
+  }, [])
+
+  const currentStep = comparisonSteps[currentStepIndex]
+  const currentCriteria = useMemo(() => currentStep?.criteria.map((id) => findCriterionById(id)!), [currentStep])
+
+  // Initialize matrix for current step if not exists
   useEffect(() => {
-    if (Object.keys(hierarchyData).length > 0) {
-      calculateResults()
-    }
-  }, [hierarchyData])
-
-  const handleUserLogin = async (userName: string) => {
-    setCurrentUser(userName)
-
-    // Kullanıcının daha önceki değerlendirmesini yükle
-    try {
-      const existingEvaluation = await getAHPEvaluationByUser(userName)
-      if (existingEvaluation) {
-        setHierarchyData(existingEvaluation.hierarchy_data)
-        // Mevcut değerlendirmede tüm adımları tamamlanmış olarak işaretle
-        setUserModifiedSteps(new Set(comparisonSteps.map((step) => step.id)))
-        console.log("Mevcut değerlendirme yüklendi:", existingEvaluation)
+    if (currentStep && !comparisonMatrices[currentStep.id]) {
+      const size = currentStep.criteria.length
+      const initialMatrix = Array(size)
+        .fill(0)
+        .map(() => Array(size).fill(0))
+      for (let i = 0; i < size; i++) {
+        initialMatrix[i][i] = 1 // Diagonal elements are 1
       }
-    } catch (error) {
-      console.error("Kullanıcı verisi yükleme hatası:", error)
+      setComparisonMatrices((prev) => ({
+        ...prev,
+        [currentStep.id]: initialMatrix,
+      }))
     }
-  }
+  }, [currentStep, comparisonMatrices])
 
-  const calculateResults = async () => {
-    setIsCalculating(true)
-    try {
-      const results = calculateHierarchicalAHP(hierarchyData, criteriaHierarchy)
-      setAhpResults(results)
-    } catch (error) {
-      console.error("AHP hesaplama hatası:", error)
-    } finally {
-      setIsCalculating(false)
-    }
-  }
+  const updateComparison = useCallback(
+    (i: number, j: number, sliderValue: number) => {
+      if (!currentStep) return
 
-  const saveEvaluation = async () => {
-    if (!currentUser || !ahpResults) return
+      const newMatrices = { ...comparisonMatrices }
+      const matrix = newMatrices[currentStep.id] || []
 
-    setIsSaving(true)
-    try {
-      await saveAHPEvaluation(
-        currentUser,
-        ahpResults.criteriaWeights,
-        ahpResults.globalWeights,
-        ahpResults.consistencyResults,
-        hierarchyData,
+      const ahpValue = sliderToAHPValue(sliderValue)
+
+      // Log for debugging
+      console.log(
+        `Slider Value: ${sliderValue}, AHP Value: ${ahpValue}, Criteria: ${currentCriteria[i]?.name} vs ${currentCriteria[j]?.name}`,
       )
-      alert("Değerlendirmeniz başarıyla kaydedildi!")
+
+      // Corrected logic:
+      // If sliderValue is positive, it means criterion j is more important than i.
+      // So, matrix[i][j] should be 1/ahpValue and matrix[j][i] should be ahpValue.
+      // If sliderValue is negative, it means criterion i is more important than j.
+      // So, matrix[i][j] should be ahpValue and matrix[j][i] should be 1/ahpValue.
+      if (sliderValue > 0) {
+        // Right criterion (j) is more important
+        matrix[i][j] = 1 / ahpValue
+        matrix[j][i] = ahpValue
+        console.log(
+          `Setting ${currentCriteria[j]?.name} as ${ahpValue}x more important than ${currentCriteria[i]?.name}`,
+        )
+      } else if (sliderValue < 0) {
+        // Left criterion (i) is more important
+        matrix[i][j] = ahpValue
+        matrix[j][i] = 1 / ahpValue
+        console.log(
+          `Setting ${currentCriteria[i]?.name} as ${ahpValue}x more important than ${currentCriteria[j]?.name}`,
+        )
+      } else {
+        // Equal importance
+        matrix[i][j] = 1
+        matrix[j][i] = 1
+        console.log(`Setting ${currentCriteria[i]?.name} and ${currentCriteria[j]?.name} as equally important`)
+      }
+
+      setComparisonMatrices(newMatrices)
+    },
+    [currentStep, comparisonMatrices, currentCriteria],
+  )
+
+  // Calculate weights and consistency for the current matrix
+  useEffect(() => {
+    if (!currentStep || !comparisonMatrices[currentStep.id]) return
+
+    const matrix = comparisonMatrices[currentStep.id]
+    const criteriaIds = currentStep.criteria
+
+    try {
+      const { weights, consistencyRatio, isConsistent } = calculateAHPWeights(matrix)
+
+      setConsistencyResults((prev) => ({
+        ...prev,
+        [currentStep.id]: { consistencyRatio, isConsistent },
+      }))
+
+      setCriteriaWeights((prev) => {
+        const newWeights = { ...prev }
+        criteriaIds.forEach((id, index) => {
+          newWeights[id] = weights[index]
+        })
+        return newWeights
+      })
     } catch (error) {
-      console.error("Kaydetme hatası:", error)
-      alert("Kaydetme sırasında hata oluştu.")
-    } finally {
-      setIsSaving(false)
+      console.error(`AHP hesaplama hatası (${currentStep.id}):`, error)
+      setConsistencyResults((prev) => ({
+        ...prev,
+        [currentStep.id]: { consistencyRatio: Number.NaN, isConsistent: false },
+      }))
+      setCriteriaWeights((prev) => {
+        const newWeights = { ...prev }
+        criteriaIds.forEach((id) => {
+          newWeights[id] = 0 // Hata durumunda ağırlığı sıfırla
+        })
+        return newWeights
+      })
     }
-  }
+  }, [currentStep, comparisonMatrices])
 
-  const updateComparison = (stepId: string, i: number, j: number, value: number) => {
-    const ahpValue = sliderToAHPValue(value)
+  // Calculate global weights
+  useEffect(() => {
+    const calculateGlobalWeights = () => {
+      const newGlobalWeights: Record<string, number> = {}
 
-    // Bu adımın kullanıcı tarafından değiştirildiğini işaretle
-    setUserModifiedSteps((prev) => new Set([...prev, stepId]))
+      const leafCriteria = getChildrenCriteria("technical_evaluation").concat(
+        getChildrenCriteria("overtime_criteria"),
+        getChildrenCriteria("accident_criteria"),
+        getChildrenCriteria("discipline_criteria"),
+      )
 
-    setHierarchyData((prev) => {
-      const newData = { ...prev }
-      if (!newData[stepId]) return prev
+      leafCriteria.forEach((leaf) => {
+        const path = getCriterionPath(leaf.id)
+        if (!path) {
+          newGlobalWeights[leaf.id] = 0
+          return
+        }
 
-      const newMatrix = newData[stepId].map((row) => [...row])
-      newMatrix[i][j] = ahpValue
-      newMatrix[j][i] = 1 / ahpValue
+        let currentGlobalWeight = 1
+        for (let i = 0; i < path.length; i++) {
+          const criterionId = path[i]
+          const weight = criteriaWeights[criterionId]
+          if (weight !== undefined) {
+            currentGlobalWeight *= weight
+          } else {
+            // Eğer bir üst kriterin ağırlığı henüz hesaplanmadıysa, bu yaprak kriterin ağırlığı 0 olur.
+            currentGlobalWeight = 0
+            break
+          }
+        }
+        newGlobalWeights[leaf.id] = currentGlobalWeight
+      })
+      setGlobalWeights(newGlobalWeights)
+    }
 
-      return {
-        ...newData,
-        [stepId]: newMatrix,
-      }
-    })
-  }
+    calculateGlobalWeights()
+  }, [criteriaWeights])
 
-  const getCurrentStepData = () => {
-    const step = comparisonSteps[currentStep]
-    if (!step || !hierarchyData[step.id]) return null
+  const handleNextStep = async () => {
+    if (!currentStep) return
 
-    const matrix = hierarchyData[step.id]
-    let criteria: any[] = []
+    const currentConsistency = consistencyResults[currentStep.id]
+    if (!currentConsistency || !currentConsistency.isConsistent) {
+      toast({
+        title: "Tutarlılık Hatası",
+        description: "Mevcut karşılaştırma matrisi tutarlı değil. Lütfen düzeltin.",
+        variant: "destructive",
+      })
+      return
+    }
 
-    if (step.id === "main") {
-      criteria = getMainCriteria()
+    if (currentStepIndex < comparisonSteps.length - 1) {
+      setCurrentStepIndex((prev) => prev + 1)
     } else {
-      const parentCriterion = getCriteriaById(step.id)
-      if (parentCriterion && parentCriterion.children) {
-        criteria = parentCriterion.children.map((childId) => getCriteriaById(childId)).filter(Boolean)
+      // Son adımsa, verileri kaydet
+      if (userName) {
+        try {
+          await saveAHPEvaluation(userName, criteriaWeights, globalWeights, consistencyResults, comparisonMatrices)
+          toast({
+            title: "Değerlendirme Kaydedildi",
+            description: "AHP değerlendirmeniz başarıyla kaydedildi.",
+          })
+          router.push("/collective-weights") // Toplu ağırlıklar sayfasına yönlendir
+        } catch (error) {
+          console.error("Değerlendirme kaydedilirken hata:", error)
+          toast({
+            title: "Kaydetme Hatası",
+            description: "Değerlendirme kaydedilirken bir sorun oluştu.",
+            variant: "destructive",
+          })
+        }
+      } else {
+        toast({
+          title: "Uyarı",
+          description: "Değerlendirmeyi kaydetmek için lütfen giriş yapın.",
+          variant: "destructive",
+        })
+        setIsLoginDialogOpen(true)
       }
     }
-
-    return { matrix, criteria, step }
   }
 
-  const isStepCompleted = (stepId: string) => {
-    // Sadece kullanıcı tarafından değiştirilmiş VE tutarlı olan adımlar tamamlanmış sayılır
-    const isModified = userModifiedSteps.has(stepId)
-    const result = ahpResults?.consistencyResults[stepId]
-    const isConsistent = result?.isConsistent || false
-
-    return isModified && isConsistent
+  const handlePreviousStep = () => {
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex((prev) => prev - 1)
+    } else {
+      router.push("/") // İlk adımdaysa ana sayfaya dön
+    }
   }
 
-  const getCompletedStepsCount = () => {
-    return comparisonSteps.filter((step) => isStepCompleted(step.id)).length
-  }
-
-  const renderComparisonMatrix = () => {
-    const stepData = getCurrentStepData()
-    if (!stepData) return null
-
-    const { matrix, criteria, step } = stepData
-    const result = ahpResults?.consistencyResults[step.id]
-
+  if (!currentStep || !currentCriteria) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="h-5 w-5" />
-            {step.name}
-          </CardTitle>
-          <CardDescription>{step.description}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Karşılaştırma Matrisi */}
-          <div className="space-y-4">
-            {criteria.map((criterion1, i) =>
-              criteria.slice(i + 1).map((criterion2, j) => {
-                const actualJ = i + j + 1
-                const currentValue = ahpValueToSlider(matrix[i][actualJ])
-
-                return (
-                  <div key={`${i}-${actualJ}`} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-blue-600">{criterion1.name}</span>
-                      <span className="text-sm font-medium text-green-600">{criterion2.name}</span>
-                    </div>
-                    <div className="px-4">
-                      <Slider
-                        value={[currentValue]}
-                        onValueChange={([value]) => updateComparison(step.id, i, actualJ, value)}
-                        min={-8}
-                        max={8}
-                        step={1}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>Sol 9x Önemli</span>
-                        <span>Eşit</span>
-                        <span>Sağ 9x Önemli</span>
-                      </div>
-                      <div className="text-center text-sm mt-2">
-                        {currentValue === 0 ? (
-                          <Badge variant="secondary">Eşit Önemli</Badge>
-                        ) : currentValue > 0 ? (
-                          <Badge variant="default">
-                            {criterion2.name} {Math.abs(currentValue) + 1}x Önemli
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">
-                            {criterion1.name} {Math.abs(currentValue) + 1}x Önemli
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              }),
-            )}
-          </div>
-
-          {/* Tutarlılık Sonuçları */}
-          {result && userModifiedSteps.has(step.id) && (
-            <div className="border-t pt-4">
-              <h4 className="font-semibold mb-3">Tutarlılık Analizi</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Tutarlılık Oranı (CR)</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold">{(result.consistencyRatio * 100).toFixed(2)}%</span>
-                    {result.isConsistent ? (
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                    ) : (
-                      <AlertTriangle className="h-5 w-5 text-red-500" />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Durum</p>
-                  <Badge variant={result.isConsistent ? "default" : "destructive"}>
-                    {result.isConsistent ? "Tutarlı" : "Tutarsız"}
-                  </Badge>
-                </div>
-              </div>
-
-              {!result.isConsistent && (
-                <Alert className="mt-3">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    Tutarlılık oranı %10'dan yüksek. Karşılaştırmalarınızı gözden geçirin.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Kriter Ağırlıkları */}
-              <div className="mt-4">
-                <h5 className="font-medium mb-2">Kriter Ağırlıkları</h5>
-                <div className="space-y-2">
-                  {criteria.map((criterion, index) => (
-                    <div key={criterion.id} className="flex justify-between items-center">
-                      <span className="text-sm">{criterion.name}</span>
-                      <div className="flex items-center gap-2">
-                        <Progress value={result.weights[index] * 100} className="w-20 h-2" />
-                        <span className="text-sm font-medium w-12">{(result.weights[index] * 100).toFixed(1)}%</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Karşılaştırma yapılmadığında uyarı */}
-          {!userModifiedSteps.has(step.id) && (
-            <Alert>
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                Bu adımda henüz karşılaştırma yapmadınız. Kriterleri karşılaştırmak için yukarıdaki kaydırıcıları
-                kullanın.
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Yükleniyor...</p>
+        </div>
+      </div>
     )
   }
 
-  const canProceed = () => {
-    const step = comparisonSteps[currentStep]
-    return isStepCompleted(step?.id)
-  }
-
-  const allStepsCompleted = () => {
-    return getCompletedStepsCount() === comparisonSteps.length
-  }
-
-  if (!currentUser) {
-    return <UserLoginDialog open={showLoginDialog} onOpenChange={setShowLoginDialog} onUserLogin={handleUserLogin} />
-  }
+  const currentMatrix = comparisonMatrices[currentStep.id] || []
+  const currentConsistency = consistencyResults[currentStep.id]
+  const isCurrentStepConsistent = currentConsistency?.isConsistent ?? false
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <UserLoginDialog
+        isOpen={isLoginDialogOpen}
+        onClose={() => setIsLoginDialogOpen(false)}
+        onLogin={handleLogin}
+        currentUserName={userName}
+      />
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -313,114 +360,106 @@ export default function HierarchicalComparisonPage() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">AHP Hiyerarşik Karşılaştırma</h1>
                 <p className="text-sm text-gray-600">
-                  Adım {currentStep + 1} / {comparisonSteps.length} - Kullanıcı: {currentUser}
+                  Adım {currentStepIndex + 1} / {comparisonSteps.length} - Kullanıcı: {userName || "Misafir"}
                 </p>
               </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              {allStepsCompleted() && (
-                <>
-                  <Button onClick={saveEvaluation} disabled={isSaving} variant="outline">
-                    <Save className="h-4 w-4 mr-2" />
-                    {isSaving ? "Kaydediliyor..." : "Değerlendirmeyi Kaydet"}
-                  </Button>
-                  <Link href="/collective-weights">
-                    <Button>
-                      <User className="h-4 w-4 mr-2" />
-                      Toplu Ağırlıklar
-                    </Button>
-                  </Link>
-                </>
-              )}
             </div>
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid lg:grid-cols-4 gap-8">
-          {/* Sol Panel - Adım Navigasyonu */}
-          <div className="lg:col-span-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Sol Panel - Karşılaştırma Adımları */}
+          <Card className="lg:col-span-1 h-fit sticky top-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Scale className="h-5 w-5" />
+                Karşılaştırma Adımları
+              </CardTitle>
+              <CardDescription>Hiyerarşideki kriter çiftlerini karşılaştırın.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {comparisonSteps.map((step, index) => (
+                <div
+                  key={step.id}
+                  className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition-colors ${
+                    index === currentStepIndex ? "bg-blue-50 border border-blue-200" : "hover:bg-gray-50"
+                  }`}
+                  onClick={() => setCurrentStepIndex(index)}
+                >
+                  <div>
+                    <p className="font-medium">{step.name}</p>
+                    <p className="text-sm text-gray-500">{step.description}</p>
+                  </div>
+                  {consistencyResults[step.id]?.isConsistent && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Sağ Panel - Karşılaştırma Arayüzü */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* Genel İlerleme */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Karşılaştırma Adımları</CardTitle>
+                <CardTitle>Genel İlerleme</CardTitle>
+                <CardDescription>
+                  {currentStepIndex + 1} / {comparisonSteps.length} Tamamlandı
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {comparisonSteps.map((step, index) => {
-                    const isActive = index === currentStep
-                    const isCompleted = isStepCompleted(step.id)
-                    const isModified = userModifiedSteps.has(step.id)
-
-                    return (
-                      <button
-                        key={step.id}
-                        onClick={() => setCurrentStep(index)}
-                        className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                          isActive
-                            ? "border-blue-500 bg-blue-50"
-                            : isCompleted
-                              ? "border-green-500 bg-green-50"
-                              : isModified
-                                ? "border-yellow-500 bg-yellow-50"
-                                : "border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-sm">{step.name}</p>
-                            <p className="text-xs text-gray-600 mt-1">{step.description}</p>
-                          </div>
-                          {isCompleted ? (
-                            <CheckCircle className="h-5 w-5 text-green-500" />
-                          ) : isModified ? (
-                            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                          ) : null}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+                <Progress value={((currentStepIndex + 1) / comparisonSteps.length) * 100} className="h-2" />
               </CardContent>
             </Card>
-          </div>
 
-          {/* Ana İçerik */}
-          <div className="lg:col-span-3">
-            <div className="space-y-6">
-              {/* İlerleme Çubuğu */}
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium">Genel İlerleme</span>
-                    <span className="text-sm text-gray-600">
-                      {getCompletedStepsCount()} / {comparisonSteps.length} Tamamlandı
-                    </span>
-                  </div>
-                  <Progress value={(getCompletedStepsCount() / comparisonSteps.length) * 100} className="h-2" />
-                </CardContent>
-              </Card>
+            {/* Mevcut Karşılaştırma */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Scale className="h-5 w-5" />
+                  {currentStep.name}
+                </CardTitle>
+                <CardDescription>{currentStep.description}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {currentCriteria.map((criterion1, i) =>
+                  currentCriteria.slice(i + 1).map((criterion2, jOffset) => {
+                    const j = i + 1 + jOffset
+                    const value = currentMatrix[i]?.[j] || 1 // Default to 1 if not set
+                    const sliderValue = ahpValueToSlider(value)
 
-              {/* Karşılaştırma Matrisi */}
-              {renderComparisonMatrix()}
+                    const importanceText = (val: number, crit1Name: string, crit2Name: string) => {
+                      if (val === 1) return "Eşit Önemli"
+                      if (val > 1) return `${crit1Name} ${val}x Önemli`
+                      return `${crit2Name} ${Math.round(1 / val)}x Önemli`
+                    }
 
-              {/* Navigasyon Butonları */}
-              <div className="flex justify-between">
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
-                  disabled={currentStep === 0}
-                >
-                  Önceki Adım
-                </Button>
-                <Button
-                  onClick={() => setCurrentStep(Math.min(comparisonSteps.length - 1, currentStep + 1))}
-                  disabled={currentStep === comparisonSteps.length - 1 || !canProceed()}
-                >
-                  Sonraki Adım
-                </Button>
-              </div>
-            </div>
+                    const displayValue = sliderToAHPValue(sliderValue)
+
+                    return (
+                      <div key={`${criterion1.id}-${criterion2.id}`} className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-medium">{criterion1.name}</span>
+                          <span className="text-sm text-gray-500">vs</span>
+                          <span className="font-medium">{criterion2.name}</span>
+                        </div>
+                        <Slider
+                          defaultValue={[sliderValue]}
+                          min={-8}
+                          max={8}
+                          step={1}
+                          onValueChange={(newValue) => updateComparison(i, j, newValue[0])}
+                        />
+                        <span className="text-sm text-gray-500">
+                          {importanceText(displayValue, criterion1.name, criterion2.name)}
+                        </span>
+                      </div>
+                    )
+                  }),
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </main>
