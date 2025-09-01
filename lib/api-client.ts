@@ -218,6 +218,14 @@ export function calculateAverageWeights(evaluations: AHPEvaluation[]): Record<st
     console.log(`  - global_weights tipi: ${typeof evaluation.global_weights}`)
     console.log(`  - global_weights: ${JSON.stringify(evaluation.global_weights)}`)
     console.log(`  - global_weights keys: ${Object.keys(evaluation.global_weights || {}).join(", ")}`)
+    console.log(`  - global_weights null/undefined kontrolü: ${evaluation.global_weights === null}, ${evaluation.global_weights === undefined}`)
+    console.log(`  - global_weights boş obje kontrolü: ${Object.keys(evaluation.global_weights || {}).length === 0}`)
+    if (evaluation.global_weights && typeof evaluation.global_weights === "object") {
+      console.log(`  - global_weights değerleri:`)
+      Object.entries(evaluation.global_weights).forEach(([key, value]) => {
+        console.log(`    * ${key}: ${value} (tip: ${typeof value})`)
+      })
+    }
   })
 
   // Tüm kriterleri topla

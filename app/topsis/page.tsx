@@ -99,6 +99,10 @@ export default function TOPSISPage() {
       const avgWeights = calculateAverageWeights(selected)
       console.log("✅ Hesaplanan ortalama ağırlıklar:", avgWeights)
       console.log("📊 Sıfır olmayan ağırlık sayısı:", Object.values(avgWeights).filter((w) => w > 0).length)
+      console.log("🔍 Debug: avgWeights tipi:", typeof avgWeights)
+      console.log("🔍 Debug: avgWeights null/undefined kontrolü:", avgWeights === null, avgWeights === undefined)
+      console.log("🔍 Debug: avgWeights boş obje kontrolü:", Object.keys(avgWeights).length === 0)
+      console.log("🔍 Debug: avgWeights içeriği detay:", JSON.stringify(avgWeights, null, 2))
 
       if (Object.values(avgWeights).filter((w) => w > 0).length === 0) {
         throw new Error(
@@ -107,6 +111,7 @@ export default function TOPSISPage() {
       }
 
       setAverageWeights(avgWeights)
+      console.log("✅ averageWeights state'e set edildi:", avgWeights)
     } catch (error) {
       console.error("❌ Değerlendirmeler yüklenirken hata:", error)
       setError(
