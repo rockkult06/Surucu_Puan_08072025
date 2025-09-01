@@ -13,6 +13,7 @@ import {
   findCriterionById,
   getChildrenCriteria,
   getCriterionPath,
+  getLeafCriteria,
   type Criterion,
 } from "@/lib/criteria-hierarchy"
 import { calculateAHPWeights, type ConsistencyResult } from "@/lib/ahp"
@@ -237,11 +238,8 @@ export default function HierarchicalComparisonPage() {
     const calculateGlobalWeights = () => {
       const newGlobalWeights: Record<string, number> = {}
 
-      const leafCriteria = getChildrenCriteria("technical_evaluation").concat(
-        getChildrenCriteria("overtime_criteria"),
-        getChildrenCriteria("accident_criteria"),
-        getChildrenCriteria("discipline_criteria"),
-      )
+      // Tüm leaf kriterleri al
+      const leafCriteria = getLeafCriteria()
 
       leafCriteria.forEach((leaf) => {
         const path = getCriterionPath(leaf.id)
