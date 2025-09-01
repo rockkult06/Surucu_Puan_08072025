@@ -207,10 +207,13 @@ export default function TOPSISPage() {
 
       console.log("🔍 Debug: averageWeights içeriği:", averageWeights)
       console.log("🔍 Debug: leafCriteria içeriği:", leafCriteria.map(c => ({ id: c.id, name: c.name })))
+      console.log("🔍 Debug: averageWeights keys:", Object.keys(averageWeights))
+      console.log("🔍 Debug: averageWeights values:", Object.values(averageWeights))
 
       leafCriteria.forEach((criterion) => {
         const weight = averageWeights[criterion.id]
         console.log(`🔍 Debug: Kriter ${criterion.id} (${criterion.name}) için ağırlık:`, weight)
+        console.log(`🔍 Debug: averageWeights[${criterion.id}] = ${weight} (tip: ${typeof weight})`)
         if (weight && weight > 0) {
           criteriaNames.push(criterion.name)
           criteriaTypes.push(criterion.type)
@@ -224,17 +227,64 @@ export default function TOPSISPage() {
       // Eğer leafCriteria ile eşleşme yoksa, global_weights'ten direkt al
       if (criteriaNames.length === 0) {
         console.log("⚠️ leafCriteria ile eşleşme bulunamadı, global_weights'ten direkt alınıyor...")
+        console.log("🔍 Debug: Fallback - Tüm global_weights içeriği:")
+        Object.entries(averageWeights).forEach(([criterionId, weight]) => {
+          console.log(`  - ${criterionId}: ${weight} (tip: ${typeof weight})`)
+        })
+        
+        // ID mapping tablosu - AHP'deki ID'leri TOPSIS ID'lerine eşleştir
+        const idMapping: Record<string, { name: string; type: "benefit" | "cost" }> = {
+          // Fazla Mesai Kriterleri
+          "plansiz_fazla_mesai": { name: "Plansız Fazla Mesai", type: "cost" },
+          "planli_fazla_mesai": { name: "Planlı Fazla Mesai", type: "benefit" },
+          "unplanned_overtime": { name: "Plansız Fazla Mesai", type: "cost" },
+          "planned_overtime": { name: "Planlı Fazla Mesai", type: "benefit" },
+          
+          // Kaza Kriterleri
+          "kucuk_kaza": { name: "Küçük Kaza", type: "cost" },
+          "buyuk_kaza": { name: "Büyük Kaza", type: "cost" },
+          "minor_accident": { name: "Küçük Kaza", type: "cost" },
+          "major_accident": { name: "Büyük Kaza", type: "cost" },
+          
+          // Disiplin Kriterleri
+          "uyari": { name: "Uyarı", type: "cost" },
+          "kinama": { name: "Kınama", type: "cost" },
+          "uzaklastirma": { name: "Uzaklaştırma", type: "cost" },
+          "warning": { name: "Uyarı", type: "cost" },
+          "reprimand": { name: "Kınama", type: "cost" },
+          "suspension": { name: "Uzaklaştırma", type: "cost" },
+          
+          // Teknik Kriterler
+          "sert_fren": { name: "Sert Fren", type: "cost" },
+          "sert_hizlanma": { name: "Sert Hızlanma", type: "cost" },
+          "sert_viraj": { name: "Sert Viraj", type: "cost" },
+          "hiz_asimi": { name: "Hız Aşımı", type: "cost" },
+          "rolanti_suresi": { name: "Rölanti Süresi", type: "cost" },
+          "yakit_tuketimi": { name: "Yakıt Tüketimi", type: "cost" },
+          "harsh_braking": { name: "Sert Fren", type: "cost" },
+          "harsh_acceleration": { name: "Sert Hızlanma", type: "cost" },
+          "harsh_cornering": { name: "Sert Viraj", type: "cost" },
+          "speeding": { name: "Hız Aşımı", type: "cost" },
+          "idle_time": { name: "Rölanti Süresi", type: "cost" },
+          "fuel_consumption": { name: "Yakıt Tüketimi", type: "cost" }
+        }
+        
         Object.entries(averageWeights).forEach(([criterionId, weight]) => {
           if ((weight as number) > 0) {
-            // Kriter ID'sini kullanarak isim bul
-            const criterion = leafCriteria.find(c => c.id === criterionId)
-            const criterionName = criterion ? criterion.name : criterionId
-            const criterionType = criterion ? criterion.type : "cost" // Varsayılan olarak cost
-            
-            criteriaNames.push(criterionName)
-            criteriaTypes.push(criterionType)
-            weights.push(weight as number)
-            console.log(`✅ Kriter eklendi (global_weights'ten): ${criterionName} = ${weight}`)
+            // ID mapping tablosundan kriter bilgilerini al
+            const mappedCriterion = idMapping[criterionId]
+            if (mappedCriterion) {
+              criteriaNames.push(mappedCriterion.name)
+              criteriaTypes.push(mappedCriterion.type)
+              weights.push(weight as number)
+              console.log(`✅ Kriter eklendi (ID mapping ile): ${mappedCriterion.name} = ${weight}`)
+            } else {
+              // Mapping bulunamazsa, ID'yi direkt kullan
+              criteriaNames.push(criterionId)
+              criteriaTypes.push("cost") // Varsayılan olarak cost
+              weights.push(weight as number)
+              console.log(`✅ Kriter eklendi (fallback): ${criterionId} = ${weight}`)
+            }
           }
         })
       }
