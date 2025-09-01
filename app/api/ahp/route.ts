@@ -7,9 +7,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const action = searchParams.get("action")
   const id = searchParams.get("id")
-  const user = searchParams.get("user")
 
-  console.log("📤 GET isteği alındı:", { action, id, user })
+  console.log("📤 GET isteği alındı:", { action, id })
 
   try {
     // Test connection endpoint
@@ -18,38 +17,6 @@ export async function GET(request: NextRequest) {
       await sql`SELECT 1`
       console.log("✅ Veritabanı bağlantısı başarılı")
       return NextResponse.json({ success: true, message: "Database connection successful" })
-    }
-
-    // Get evaluation by user name
-    if (user) {
-      console.log("📤 Kullanıcı değerlendirmesi getiriliyor, User:", user)
-      const result = await sql`
-        SELECT * FROM ahp_evaluations 
-        WHERE user_name = ${user}
-        ORDER BY updated_at DESC
-        LIMIT 1
-      `
-
-      if (result.length === 0) {
-        console.log("⚠️ Kullanıcı değerlendirmesi bulunamadı, User:", user)
-        return NextResponse.json({ error: "User evaluation not found" }, { status: 404 })
-      }
-
-      const evaluation = result[0]
-      console.log("✅ Kullanıcı değerlendirmesi bulundu:", evaluation.user_name)
-
-      return NextResponse.json({
-        evaluation: {
-          id: evaluation.id,
-          user_name: evaluation.user_name,
-          comparison_matrices: evaluation.comparison_matrices,
-          local_weights: evaluation.local_weights,
-          global_weights: evaluation.global_weights,
-          consistency_results: evaluation.consistency_results,
-          created_at: evaluation.created_at,
-          updated_at: evaluation.updated_at,
-        },
-      })
     }
 
     // Get specific evaluation by ID

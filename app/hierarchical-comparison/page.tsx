@@ -13,7 +13,6 @@ import {
   findCriterionById,
   getChildrenCriteria,
   getCriterionPath,
-  getLeafCriteria,
   type Criterion,
 } from "@/lib/criteria-hierarchy"
 import { calculateAHPWeights, type ConsistencyResult } from "@/lib/ahp"
@@ -66,9 +65,9 @@ export default function HierarchicalComparisonPage() {
     try {
       const evaluation = await getAHPEvaluationByUser(user)
       if (evaluation) {
-        setComparisonMatrices(evaluation.comparison_matrices)
+        setComparisonMatrices(evaluation.hierarchy_data)
         setConsistencyResults(evaluation.consistency_results)
-        setCriteriaWeights(evaluation.local_weights)
+        setCriteriaWeights(evaluation.criteria_weights)
         setGlobalWeights(evaluation.global_weights)
         toast({
           title: "Veriler Yüklendi",
@@ -238,8 +237,11 @@ export default function HierarchicalComparisonPage() {
     const calculateGlobalWeights = () => {
       const newGlobalWeights: Record<string, number> = {}
 
-      // Tüm leaf kriterleri al
-      const leafCriteria = getLeafCriteria()
+      const leafCriteria = getChildrenCriteria("technical_evaluation").concat(
+        getChildrenCriteria("overtime_criteria"),
+        getChildrenCriteria("accident_criteria"),
+        getChildrenCriteria("discipline_criteria"),
+      )
 
       leafCriteria.forEach((leaf) => {
         const path = getCriterionPath(leaf.id)
@@ -287,13 +289,7 @@ export default function HierarchicalComparisonPage() {
       // Son adımsa, verileri kaydet
       if (userName) {
         try {
-          await saveAHPEvaluation({
-            user_name: userName,
-            comparison_matrices: comparisonMatrices,
-            local_weights: criteriaWeights,
-            global_weights: globalWeights,
-            consistency_results: consistencyResults,
-          })
+          await saveAHPEvaluation(userName, criteriaWeights, globalWeights, consistencyResults, comparisonMatrices)
           toast({
             title: "Değerlendirme Kaydedildi",
             description: "AHP değerlendirmeniz başarıyla kaydedildi.",

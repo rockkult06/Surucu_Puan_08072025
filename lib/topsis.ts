@@ -117,17 +117,17 @@ function normalizeMatrix(matrix: number[][]): number[][] {
   return normalizedMatrix
 }
 
-export function addDistanceDataToResults(results: TOPSISResult[], distanceData: Record<string, number>): TOPSISResult[] {
-  const updatedResults = results.map((result) => ({
+export function addDistanceDataToResults(results: TOPSISResult[], distanceData: number[]): TOPSISResult[] {
+  const updatedResults = results.map((result, index) => ({
     ...result,
-    distanceTraveled: distanceData[result.alternative] || 0,
+    distanceTraveled: distanceData[index] || 0,
   }))
 
   // Re-sort with distance tie-breaking
   updatedResults.sort((a, b) => {
     const coeffDiff = b.closenessCoefficient - a.closenessCoefficient
 
-    if (Math.abs(coeffDiff) === 0.0000 && a.distanceTraveled !== undefined && b.distanceTraveled !== undefined) {
+    if (Math.abs(coeffDiff) < 0.0001 && a.distanceTraveled !== undefined && b.distanceTraveled !== undefined) {
       return (b.distanceTraveled || 0) - (a.distanceTraveled || 0)
     }
 

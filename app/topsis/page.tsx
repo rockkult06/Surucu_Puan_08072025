@@ -34,8 +34,6 @@ export default function TOPSISPage() {
   const [error, setError] = useState<string | null>(null)
   const [isAnalysisComplete, setIsAnalysisComplete] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
-  const [minDistance, setMinDistance] = useState<number | "">("")
-  const [filteredDriverData, setFilteredDriverData] = useState<DriverData[]>([])
 
   const leafCriteria = getLeafCriteria()
 
@@ -99,10 +97,6 @@ export default function TOPSISPage() {
       const avgWeights = calculateAverageWeights(selected)
       console.log("✅ Hesaplanan ortalama ağırlıklar:", avgWeights)
       console.log("📊 Sıfır olmayan ağırlık sayısı:", Object.values(avgWeights).filter((w) => w > 0).length)
-      console.log("🔍 Debug: avgWeights tipi:", typeof avgWeights)
-      console.log("🔍 Debug: avgWeights null/undefined kontrolü:", avgWeights === null, avgWeights === undefined)
-      console.log("🔍 Debug: avgWeights boş obje kontrolü:", Object.keys(avgWeights).length === 0)
-      console.log("🔍 Debug: avgWeights içeriği detay:", JSON.stringify(avgWeights, null, 2))
 
       if (Object.values(avgWeights).filter((w) => w > 0).length === 0) {
         throw new Error(
@@ -111,7 +105,6 @@ export default function TOPSISPage() {
       }
 
       setAverageWeights(avgWeights)
-      console.log("✅ averageWeights state'e set edildi:", avgWeights)
     } catch (error) {
       console.error("❌ Değerlendirmeler yüklenirken hata:", error)
       setError(
@@ -174,9 +167,7 @@ export default function TOPSISPage() {
   }, [])
 
   const runTOPSISAnalysis = useCallback(() => {
-    const dataToUse = filteredDriverData.length > 0 ? filteredDriverData : driverData
-    
-    if (dataToUse.length === 0) {
+    if (driverData.length === 0) {
       setError("Sürücü verisi gerekli")
       return
     }
@@ -186,7 +177,7 @@ export default function TOPSISPage() {
       return
     }
 
-    const validWeights = Object.values(averageWeights).filter((w) => (w as number) > 0)
+    const validWeights = Object.values(averageWeights).filter((w) => w > 0)
     if (validWeights.length === 0) {
       setError("Geçerli ağırlık bulunamadı. Lütfen AHP değerlendirmelerini kontrol edin.")
       return
@@ -197,28 +188,21 @@ export default function TOPSISPage() {
 
     try {
       console.log("🚀 TOPSIS analizi başlatılıyor...")
-      console.log("📊 Sürücü verisi:", dataToUse.length, "satır")
+      console.log("📊 Sürücü verisi:", driverData.length, "satır")
       console.log("⚖️ Ağırlık sayısı:", Object.keys(averageWeights).length)
       console.log("✅ Geçerli ağırlık sayısı:", validWeights.length)
 
       // Excel'den sürücü isimlerini al (ilk sütun genellikle Sicil No)
-      const firstColumnKey = Object.keys(dataToUse[0])[0]
-      const alternatives = dataToUse.map((driver: DriverData) => String(driver[firstColumnKey] || ""))
+      const firstColumnKey = Object.keys(driverData[0])[0]
+      const alternatives = driverData.map((driver) => String(driver[firstColumnKey] || ""))
 
       // Kriter isimlerini ve tiplerini al - sadece geçerli ağırlığı olanlar
       const criteriaNames: string[] = []
       const criteriaTypes: ("benefit" | "cost")[] = []
       const weights: number[] = []
 
-      console.log("🔍 Debug: averageWeights içeriği:", averageWeights)
-      console.log("🔍 Debug: leafCriteria içeriği:", leafCriteria.map(c => ({ id: c.id, name: c.name })))
-      console.log("🔍 Debug: averageWeights keys:", Object.keys(averageWeights))
-      console.log("🔍 Debug: averageWeights values:", Object.values(averageWeights))
-
       leafCriteria.forEach((criterion) => {
         const weight = averageWeights[criterion.id]
-        console.log(`🔍 Debug: Kriter ${criterion.id} (${criterion.name}) için ağırlık:`, weight)
-        console.log(`🔍 Debug: averageWeights[${criterion.id}] = ${weight} (tip: ${typeof weight})`)
         if (weight && weight > 0) {
           criteriaNames.push(criterion.name)
           criteriaTypes.push(criterion.type)
@@ -229,54 +213,6 @@ export default function TOPSISPage() {
         }
       })
 
-      // Eğer leafCriteria ile eşleşme yoksa, global_weights'ten direkt al
-      if (criteriaNames.length === 0) {
-        console.log("⚠️ leafCriteria ile eşleşme bulunamadı, global_weights'ten direkt alınıyor...")
-        console.log("🔍 Debug: Fallback - Tüm global_weights içeriği:")
-        Object.entries(averageWeights).forEach(([criterionId, weight]) => {
-          console.log(`  - ${criterionId}: ${weight} (tip: ${typeof weight})`)
-        })
-        
-        // ID mapping tablosu - AHP'deki ID'leri TOPSIS ID'lerine eşleştir
-        const idMapping: Record<string, { name: string; type: "benefit" | "cost" }> = {
-          // AHP'den gelen gerçek ID'ler (artık criteria-hierarchy ile eşleşiyor)
-          "idle": { name: "Rölanti Süresi", type: "cost" },
-          "speed": { name: "Hız Aşımı", type: "cost" },
-          "engine": { name: "Motor Performansı", type: "cost" },
-          "attendance": { name: "Devam Durumu", type: "benefit" },
-          "acceleration": { name: "Hızlanma", type: "cost" },
-          "fatal_accident": { name: "Ölümlü Kaza", type: "cost" },
-          "injury_accident": { name: "Yaralanmalı Kaza", type: "cost" },
-          "normal_overtime": { name: "Normal Fazla Mesai", type: "benefit" },
-          "holiday_overtime": { name: "Tatil Fazla Mesai", type: "benefit" },
-          "weekend_overtime": { name: "Hafta Sonu Fazla Mesai", type: "benefit" },
-          "first_degree_dismissal": { name: "Birinci Derece Uzaklaştırma", type: "cost" },
-          "third_degree_dismissal": { name: "Üçüncü Derece Uzaklaştırma", type: "cost" },
-          "fourth_degree_dismissal": { name: "Dördüncü Derece Uzaklaştırma", type: "cost" },
-          "second_degree_dismissal": { name: "İkinci Derece Uzaklaştırma", type: "cost" },
-          "material_damage_accident": { name: "Maddi Hasarlı Kaza", type: "cost" }
-        }
-        
-        Object.entries(averageWeights).forEach(([criterionId, weight]) => {
-          if ((weight as number) > 0) {
-            // ID mapping tablosundan kriter bilgilerini al
-            const mappedCriterion = idMapping[criterionId]
-            if (mappedCriterion) {
-              criteriaNames.push(mappedCriterion.name)
-              criteriaTypes.push(mappedCriterion.type)
-              weights.push(weight as number)
-              console.log(`✅ Kriter eklendi (ID mapping ile): ${mappedCriterion.name} = ${weight}`)
-            } else {
-              // Mapping bulunamazsa, ID'yi direkt kullan
-              criteriaNames.push(criterionId)
-              criteriaTypes.push("cost") // Varsayılan olarak cost
-              weights.push(weight as number)
-              console.log(`✅ Kriter eklendi (fallback): ${criterionId} = ${weight}`)
-            }
-          }
-        })
-      }
-
       if (criteriaNames.length === 0) {
         throw new Error("Hiçbir kriter için geçerli ağırlık bulunamadı")
       }
@@ -286,35 +222,20 @@ export default function TOPSISPage() {
 
       // Excel verilerinden kriter değerlerini çıkar
       const matrix: number[][] = []
-      const distanceData: Record<string, number> = {}
+      const distanceData: number[] = []
 
-      dataToUse.forEach((driver: DriverData, driverIndex: number) => {
+      driverData.forEach((driver, driverIndex) => {
         const row: number[] = []
         let distanceTraveled = 0
 
-        // Sürücü ID'sini al (Sicil No)
-        const firstColumnKey = Object.keys(driver)[0]
-        const driverID = String(driver[firstColumnKey] || "")
-
-        // Çalışılan Saat verisini bul
+        // Yapılan Kilometre verisini bul
         const distanceKeys = Object.keys(driver).filter(
-          (key) => key.toLowerCase().includes("çalışılan saat") || key.toLowerCase().includes("çalışılan st"),
+          (key) => key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km"),
         )
-        if (distanceKeys.length === 0) {
-          // Fallback: hala kilometre arıyorsa
-          const fallbackKeys = Object.keys(driver).filter(
-            (key) => (key.toLowerCase().includes("saat") || key.toLowerCase().includes("st")) &&
-                     !key.toLowerCase().includes("oran") && !key.toLowerCase().includes("ratio")
-          )
-          if (fallbackKeys.length > 0) {
-            distanceTraveled = Number(driver[fallbackKeys[0]]) || 0
-          }
-        } else {
+        if (distanceKeys.length > 0) {
           distanceTraveled = Number(driver[distanceKeys[0]]) || 0
         }
-        
-        // Sürücü ID'sine göre map'e ekle
-        distanceData[driverID] = distanceTraveled
+        distanceData.push(distanceTraveled)
 
         // Her kriter için Excel'den değer bul
         criteriaNames.forEach((criteriaName, criteriaIndex) => {
@@ -361,7 +282,7 @@ export default function TOPSISPage() {
         criteriaTypes,
       })
 
-      // Çalışılan Saat verisi ile tie-breaking uygula
+      // Kilometre verisi ile tie-breaking uygula
       const finalResults = addDistanceDataToResults(topsisResults, distanceData)
 
       console.log("✅ TOPSIS analizi tamamlandı, sonuç sayısı:", finalResults.length)
@@ -373,48 +294,7 @@ export default function TOPSISPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [driverData, filteredDriverData, averageWeights, leafCriteria])
-
-  // driverData değiştiğinde filtre uygula
-  useEffect(() => {
-    if (minDistance === "" || isNaN(Number(minDistance))) {
-      setFilteredDriverData(driverData)
-    } else {
-      // Sadece minimum saati geçenler
-      setFilteredDriverData(
-        driverData.filter((driver: DriverData) => {
-          const excelKeys = Object.keys(driver)
-          let distanceKey = excelKeys.find(
-            (key) => key.trim().toLowerCase() === "çalışılan saat" || key.trim().toLowerCase() === "çalışılan st"
-          )
-          if (!distanceKey) {
-            distanceKey = excelKeys.find(
-              (key) =>
-                (key.toLowerCase().includes("saat") || key.toLowerCase().includes("st")) &&
-                !key.toLowerCase().includes("oran") &&
-                !key.toLowerCase().includes("ratio")
-            )
-          }
-          if (distanceKey) {
-            const distanceTraveled = Number(driver[distanceKey]) || 0
-            return distanceTraveled >= Number(minDistance)
-          }
-          return false
-        })
-      )
-    }
-  }, [driverData, minDistance])
-
-  const handleMinDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    if (value === "") setMinDistance("")
-    else setMinDistance(Number(value))
-  }
-
-  const handleApplyFilter = () => {
-    // Sadece filtreyi tetiklemek için, useEffect zaten filtreliyor
-    setFilteredDriverData((prev: DriverData[]) => [...prev])
-  }
+  }, [driverData, averageWeights, leafCriteria])
 
   const exportResults = useCallback(() => {
     if (results.length === 0) return
@@ -424,11 +304,11 @@ export default function TOPSISPage() {
 
       // Ana sonuçlar sayfası
       const wsData = [
-        ["Sıra", "Sürücü", "TOPSIS Puanı", "Çalışılan Saat"],
+        ["Sıra", "Sürücü", "TOPSIS Puanı", "Yapılan KM"],
         ...results.map((result) => [
           result.rank,
           result.alternative,
-          result.closenessCoefficient.toFixed(8),
+          result.closenessCoefficient.toFixed(4),
           result.distanceTraveled || 0,
         ]),
       ]
@@ -593,32 +473,11 @@ export default function TOPSISPage() {
                 </div>
 
                 {driverData.length > 0 && (
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                       <span className="text-sm font-medium">{driverData.length} sürücü verisi yüklendi</span>
                     </div>
-                    
-                    {/* Filtreleme */}
-                    <div className="space-y-2">
-                      <Label htmlFor="min-distance">Çalışılan Minimum Saat:</Label>
-                      <Input
-                        id="min-distance"
-                        type="number"
-                        placeholder="Minimum saat değeri girin"
-                        value={minDistance}
-                        onChange={handleMinDistanceChange}
-                      />
-                      <Button onClick={handleApplyFilter} variant="outline" size="sm">
-                        Filtre Uygula
-                      </Button>
-                      {filteredDriverData.length !== driverData.length && (
-                        <div className="text-sm text-blue-600">
-                          Filtre uygulandı: {filteredDriverData.length} sürücü gösteriliyor
-                        </div>
-                      )}
-                    </div>
-                    
                     <Button
                       onClick={runTOPSISAnalysis}
                       disabled={isLoading || Object.keys(averageWeights).length === 0}
@@ -650,7 +509,7 @@ export default function TOPSISPage() {
                   TOPSIS Analiz Sonuçları
                 </CardTitle>
                 <CardDescription>
-                  Sürücü performans sıralaması (Aynı puana sahip sürücüler arasında çalışılan saat verisi yüksek olan
+                  Sürücü performans sıralaması (Aynı puana sahip sürücüler arasında yapılan kilometre verisi yüksek olan
                   üst sırada yer alır)
                 </CardDescription>
               </CardHeader>
@@ -662,7 +521,7 @@ export default function TOPSISPage() {
                         <TableHead className="w-16">Sıra</TableHead>
                         <TableHead>Sürücü</TableHead>
                         <TableHead>TOPSIS Puanı</TableHead>
-                        <TableHead>Çalışılan Saat</TableHead>
+                        <TableHead>Yapılan KM</TableHead>
                         <TableHead>Performans</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -686,7 +545,7 @@ export default function TOPSISPage() {
                             </div>
                           </TableCell>
                           <TableCell className="font-medium">{result.alternative}</TableCell>
-                          <TableCell>{result.closenessCoefficient.toFixed(8)}</TableCell>
+                          <TableCell>{result.closenessCoefficient.toFixed(4)}</TableCell>
                           <TableCell>{result.distanceTraveled || 0}</TableCell>
                           <TableCell>
                             <Badge variant={result.rank <= 3 ? "default" : result.rank <= 10 ? "secondary" : "outline"}>

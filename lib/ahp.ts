@@ -48,10 +48,21 @@ export function calculateWeights(matrix: number[][]): number[] {
 }
 
 /**
- * Calculate AHP weights - alias for calculateWeights for compatibility
+ * Calculate AHP weights with consistency check - returns full AHP result
  */
-export function calculateAHPWeights(matrix: number[][]): number[] {
-  return calculateWeights(matrix)
+export function calculateAHPWeights(matrix: number[][]): {
+  weights: number[]
+  consistencyRatio: number
+  isConsistent: boolean
+} {
+  const weights = calculateWeights(matrix)
+  const consistencyResult = checkConsistency(matrix, weights)
+
+  return {
+    weights,
+    consistencyRatio: consistencyResult.consistencyRatio,
+    isConsistent: consistencyResult.isConsistent,
+  }
 }
 
 /**
