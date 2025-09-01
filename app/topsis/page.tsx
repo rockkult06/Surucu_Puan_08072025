@@ -239,27 +239,38 @@ export default function TOPSISPage() {
         
         // ID mapping tablosu - AHP'deki ID'leri TOPSIS ID'lerine eşleştir
         const idMapping: Record<string, { name: string; type: "benefit" | "cost" }> = {
-          // Fazla Mesai Kriterleri
+          // AHP'den gelen gerçek ID'ler
+          "idle": { name: "Rölanti Süresi", type: "cost" },
+          "speed": { name: "Hız Aşımı", type: "cost" },
+          "engine": { name: "Motor Performansı", type: "cost" },
+          "attendance": { name: "Devam Durumu", type: "benefit" },
+          "acceleration": { name: "Hızlanma", type: "cost" },
+          "fatal_accident": { name: "Ölümlü Kaza", type: "cost" },
+          "injury_accident": { name: "Yaralanmalı Kaza", type: "cost" },
+          "normal_overtime": { name: "Normal Fazla Mesai", type: "benefit" },
+          "holiday_overtime": { name: "Tatil Fazla Mesai", type: "benefit" },
+          "weekend_overtime": { name: "Hafta Sonu Fazla Mesai", type: "benefit" },
+          "first_degree_dismissal": { name: "Birinci Derece Uzaklaştırma", type: "cost" },
+          "third_degree_dismissal": { name: "Üçüncü Derece Uzaklaştırma", type: "cost" },
+          "fourth_degree_dismissal": { name: "Dördüncü Derece Uzaklaştırma", type: "cost" },
+          "second_degree_dismissal": { name: "İkinci Derece Uzaklaştırma", type: "cost" },
+          "material_damage_accident": { name: "Maddi Hasarlı Kaza", type: "cost" },
+          
+          // Eski mapping (backward compatibility)
           "plansiz_fazla_mesai": { name: "Plansız Fazla Mesai", type: "cost" },
           "planli_fazla_mesai": { name: "Planlı Fazla Mesai", type: "benefit" },
           "unplanned_overtime": { name: "Plansız Fazla Mesai", type: "cost" },
           "planned_overtime": { name: "Planlı Fazla Mesai", type: "benefit" },
-          
-          // Kaza Kriterleri
           "kucuk_kaza": { name: "Küçük Kaza", type: "cost" },
           "buyuk_kaza": { name: "Büyük Kaza", type: "cost" },
           "minor_accident": { name: "Küçük Kaza", type: "cost" },
           "major_accident": { name: "Büyük Kaza", type: "cost" },
-          
-          // Disiplin Kriterleri
           "uyari": { name: "Uyarı", type: "cost" },
           "kinama": { name: "Kınama", type: "cost" },
           "uzaklastirma": { name: "Uzaklaştırma", type: "cost" },
           "warning": { name: "Uyarı", type: "cost" },
           "reprimand": { name: "Kınama", type: "cost" },
           "suspension": { name: "Uzaklaştırma", type: "cost" },
-          
-          // Teknik Kriterler
           "sert_fren": { name: "Sert Fren", type: "cost" },
           "sert_hizlanma": { name: "Sert Hızlanma", type: "cost" },
           "sert_viraj": { name: "Sert Viraj", type: "cost" },
