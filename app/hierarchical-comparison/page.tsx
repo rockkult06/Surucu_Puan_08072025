@@ -66,9 +66,9 @@ export default function HierarchicalComparisonPage() {
     try {
       const evaluation = await getAHPEvaluationByUser(user)
       if (evaluation) {
-        setComparisonMatrices(evaluation.hierarchy_data)
+        setComparisonMatrices(evaluation.comparison_matrices)
         setConsistencyResults(evaluation.consistency_results)
-        setCriteriaWeights(evaluation.criteria_weights)
+        setCriteriaWeights(evaluation.local_weights)
         setGlobalWeights(evaluation.global_weights)
         toast({
           title: "Veriler Yüklendi",
