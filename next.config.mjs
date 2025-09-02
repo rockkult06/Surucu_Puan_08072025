@@ -1,9 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => {
-    config.externals = [...config.externals, { canvas: "canvas" }];
-    return config;
-  },
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -13,6 +9,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-};
+}
 
-export default nextConfig;
+export default nextConfig

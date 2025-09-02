@@ -24,6 +24,7 @@ import { useRouter } from "next/navigation"
 import * as XLSX from "xlsx"
 import {
   getAllAHPEvaluations,
+  calculateAverageWeights,
   deleteAHPEvaluation,
   deleteMultipleAHPEvaluations,
   deleteAllAHPEvaluations,
@@ -31,6 +32,7 @@ import {
 } from "@/lib/api-client"
 import { getLeafCriteria } from "@/lib/criteria-hierarchy"
 import { useToast } from "@/hooks/use-toast"
+import { checkDatabaseConnection } from "@/lib/neon-db"
 
 export default function CollectiveWeightsPage() {
   const [evaluations, setEvaluations] = useState<AHPEvaluation[]>([])
@@ -42,40 +44,37 @@ export default function CollectiveWeightsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [fileName, setFileName] = useState("ahp_evaluations.xlsx")
-  const [dbStatus, setDbStatus] = useState<"checking" | "connected" | "error">("checking")
+  const [dbConnected, setDbConnected] = useState(false)
+  const [debugMode, setDebugMode] = useState(process.env.NODE_ENV === "development")
 
   const router = useRouter()
   const { toast } = useToast()
 
+  const debugLog = (message: string, data?: any) => {
+    if (debugMode) {
+      console.log(`[CollectiveWeights] ${message}`, data || "")
+    }
+  }
+
   useEffect(() => {
     loadEvaluations()
-    checkDbConnection()
+    checkDbStatus()
   }, [])
 
   useEffect(() => {
     calculateAverage()
   }, [selectedEvaluations, evaluations])
 
-  const checkDbConnection = async () => {
-    try {
-      const response = await fetch("/api/ahp?action=test-connection")
-      if (response.ok) {
-        setDbStatus("connected")
-      } else {
-        setDbStatus("error")
-        toast({
-          title: "Veritabanı Bağlantı Hatası",
-          description: "Veritabanı bağlantısı kurulamadı. Lütfen sistem yöneticisi ile iletişime geçin.",
-          variant: "destructive",
-          duration: 8000,
-        })
-      }
-    } catch (error) {
-      console.error("Database connection test failed:", error)
-      setDbStatus("error")
+  const checkDbStatus = async () => {
+    debugLog("Checking database connection...")
+    const connected = await checkDatabaseConnection()
+    setDbConnected(connected)
+    debugLog("Database connection status:", connected)
+
+    if (!connected) {
       toast({
         title: "Veritabanı Bağlantı Hatası",
-        description: "Veritabanı bağlantısı test edilirken bir hata oluştu.",
+        description: "Veritabanı bağlantısı kurulamadı. Veriler geçici olarak bellekte saklanacaktır.",
         variant: "destructive",
         duration: 8000,
       })
@@ -83,27 +82,17 @@ export default function CollectiveWeightsPage() {
   }
 
   const loadEvaluations = async () => {
+    debugLog("Loading evaluations...")
     setIsLoading(true)
     try {
-      console.log("🔄 API'den değerlendirmeler yükleniyor...")
       const data = await getAllAHPEvaluations()
-      console.log("📊 API'den gelen ham veri:", data)
-      console.log("📊 Yüklenen değerlendirme sayısı:", data.length)
-
-      if (data.length > 0) {
-        console.log("🔍 İlk değerlendirmenin tam yapısı:")
-        console.log("  - ID:", data[0].id)
-        console.log("  - user_name:", data[0].user_name)
-        console.log("  - global_weights:", data[0].global_weights)
-        console.log("  - global_weights tipi:", typeof data[0].global_weights)
-        console.log("  - global_weights boş mu?:", Object.keys(data[0].global_weights || {}).length === 0)
-      }
-
+      debugLog("Loaded evaluations:", data)
       setEvaluations(data)
       setSelectedEvaluations(data.map((item) => item.id))
       setSelectedForDelete([])
     } catch (error) {
-      console.error("❌ Değerlendirmeler yüklenirken hata:", error)
+      debugLog("Error loading evaluations:", error)
+      console.error("Değerlendirmeler yüklenirken hata:", error)
       toast({
         title: "Hata",
         description: "Değerlendirmeler yüklenirken bir sorun oluştu.",
@@ -115,10 +104,10 @@ export default function CollectiveWeightsPage() {
   }
 
   const refreshEvaluations = async () => {
+    debugLog("Refreshing evaluations...")
     setIsRefreshing(true)
     try {
       await loadEvaluations()
-      await checkDbConnection()
       toast({
         title: "Başarılı",
         description: "Değerlendirmeler güncellendi.",
@@ -129,51 +118,9 @@ export default function CollectiveWeightsPage() {
   }
 
   const calculateAverage = () => {
-    console.log("🔄 calculateAverage çağrıldı")
-    console.log("📊 Toplam evaluations:", evaluations.length)
-    console.log("✅ Seçili evaluations:", selectedEvaluations.length)
-
     const selectedEvals = evaluations.filter((item) => selectedEvaluations.includes(item.id))
-    console.log("🎯 Filtrelenmiş selectedEvals:", selectedEvals.length)
-
-    if (selectedEvals.length === 0) {
-      console.log("⚠️ Seçili değerlendirme yok, boş ağırlık döndürülüyor")
-      setAverageWeights({})
-      return
-    }
-
-    // Test için manuel veri oluştur
-    console.log("🧪 TEST: Manuel test verisi oluşturuluyor...")
-    const testWeights: Record<string, number> = {}
-    const leafCriteria = getLeafCriteria()
-    leafCriteria.forEach((criterion, index) => {
-      testWeights[criterion.id] = (index + 1) * 0.05 // 0.05, 0.10, 0.15, ...
-    })
-
-    console.log("🧪 TEST: Manuel test ağırlıkları:", testWeights)
-    setAverageWeights(testWeights)
-
-    // Gerçek veri analizi
-    console.log("🔍 GERÇEK VERİ ANALİZİ:")
-    selectedEvals.forEach((evaluation, index) => {
-      console.log(`📋 Değerlendirme ${index + 1}:`)
-      console.log(`  - ID: ${evaluation.id}`)
-      console.log(`  - User: ${evaluation.user_name}`)
-      console.log(`  - global_weights var mı?: ${evaluation.global_weights ? "EVET" : "HAYIR"}`)
-      console.log(`  - global_weights tipi: ${typeof evaluation.global_weights}`)
-
-      if (evaluation.global_weights) {
-        console.log(`  - global_weights keys: [${Object.keys(evaluation.global_weights).join(", ")}]`)
-        console.log(`  - global_weights values: [${Object.values(evaluation.global_weights).join(", ")}]`)
-        console.log(`  - global_weights tam obje:`, JSON.stringify(evaluation.global_weights, null, 2))
-      }
-    })
-
-    // Leaf criteria kontrolü
-    console.log("🌿 LEAF CRITERIA KONTROLÜ:")
-    leafCriteria.forEach((criterion, index) => {
-      console.log(`  ${index + 1}. ${criterion.id} -> ${criterion.name}`)
-    })
+    const avgWeights = calculateAverageWeights(selectedEvals)
+    setAverageWeights(avgWeights)
   }
 
   const handleEvaluationToggle = (evaluationId: string, checked: boolean) => {
@@ -209,93 +156,123 @@ export default function CollectiveWeightsPage() {
   }
 
   const handleDeleteSingle = async (evaluationId: string) => {
+    debugLog("Starting single delete for ID:", evaluationId)
     setIsDeleting(true)
+
     try {
+      debugLog("Before delete - evaluations count:", evaluations.length)
       const success = await deleteAHPEvaluation(evaluationId)
+      debugLog("Delete result:", success)
+
       if (success) {
         toast({
           title: "Başarılı",
           description: "Değerlendirme başarıyla silindi.",
         })
+        debugLog("Delete successful, refreshing data...")
       } else {
         toast({
           title: "Hata",
           description: "Değerlendirme silinirken bir sorun oluştu.",
           variant: "destructive",
         })
+        debugLog("Delete failed")
       }
     } catch (error) {
+      debugLog("Delete error:", error)
       console.error("Silme hatası:", error)
       toast({
         title: "Hata",
-        description: "Değerlendirme silinirken bir hata oluştu.",
+        description: `Değerlendirme silinirken bir hata oluştu: ${error.message}`,
         variant: "destructive",
       })
     } finally {
+      debugLog("Refreshing evaluations after single delete...")
       await loadEvaluations()
       setIsDeleting(false)
+      debugLog("Single delete operation completed")
     }
   }
 
   const handleDeleteMultiple = async () => {
     if (selectedForDelete.length === 0) return
 
+    debugLog("Starting multiple delete for IDs:", selectedForDelete)
     setIsDeleting(true)
+
     try {
+      debugLog("Before multiple delete - evaluations count:", evaluations.length)
       const success = await deleteMultipleAHPEvaluations(selectedForDelete)
+      debugLog("Multiple delete result:", success)
+
       if (success) {
         toast({
           title: "Başarılı",
           description: `${selectedForDelete.length} adet değerlendirme başarıyla silindi.`,
         })
+        debugLog("Multiple delete successful")
       } else {
         toast({
           title: "Hata",
           description: "Seçilen değerlendirmeler silinirken bir sorun oluştu.",
           variant: "destructive",
         })
+        debugLog("Multiple delete failed")
       }
     } catch (error) {
+      debugLog("Multiple delete error:", error)
       console.error("Toplu silme hatası:", error)
       toast({
         title: "Hata",
-        description: "Seçilen değerlendirmeler silinirken bir hata oluştu.",
+        description: `Seçilen değerlendirmeler silinirken bir hata oluştu: ${error.message}`,
         variant: "destructive",
       })
     } finally {
+      debugLog("Refreshing evaluations after multiple delete...")
       await loadEvaluations()
       setSelectedForDelete([])
       setIsDeleting(false)
+      debugLog("Multiple delete operation completed")
     }
   }
 
   const handleDeleteAll = async () => {
+    debugLog("Starting delete all operation")
     setIsDeleting(true)
+
     try {
+      debugLog("Before delete all - evaluations count:", evaluations.length)
       const success = await deleteAllAHPEvaluations()
+      debugLog("Delete all result:", success)
+
       if (success) {
         toast({
           title: "Başarılı",
           description: "Tüm değerlendirmeler başarıyla silindi.",
         })
+        debugLog("Delete all successful")
       } else {
         toast({
           title: "Hata",
           description: "Tüm değerlendirmeler silinirken bir sorun oluştu.",
           variant: "destructive",
         })
+        debugLog("Delete all failed")
       }
     } catch (error) {
+      debugLog("Delete all error:", error)
       console.error("Tümünü silme hatası:", error)
       toast({
         title: "Hata",
-        description: "Tüm değerlendirmeler silinirken bir hata oluştu.",
+        description: `Tüm değerlendirmeler silinirken bir hata oluştu: ${error.message}`,
         variant: "destructive",
       })
     } finally {
+      debugLog("Refreshing evaluations after delete all...")
       await loadEvaluations()
       setSelectedForDelete([])
       setIsDeleting(false)
+      debugLog("Delete all operation completed")
     }
   }
 
@@ -308,28 +285,8 @@ export default function CollectiveWeightsPage() {
       })
       return
     }
-
-    // Ağırlık kontrolü ekle
-    const hasWeights = Object.keys(averageWeights).length > 0 && Object.values(averageWeights).some((w) => w > 0)
-
-    if (!hasWeights) {
-      toast({
-        title: "Uyarı",
-        description: "Ortalama ağırlıklar hesaplanmamış. Lütfen sayfayı yenileyip tekrar deneyin.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    console.log("🚀 TOPSIS'e geçiliyor, seçili ID'ler:", selectedEvaluations)
-    console.log("⚖️ Ortalama ağırlıklar:", averageWeights)
-
     const selectedIdsParam = JSON.stringify(selectedEvaluations)
-    const encodedParam = encodeURIComponent(selectedIdsParam)
-    const url = `/topsis?selectedIds=${encodedParam}`
-
-    console.log("🔗 Oluşturulan URL:", url)
-    router.push(url)
+    router.push(`/topsis?selectedIds=${encodeURIComponent(selectedIdsParam)}`)
   }
 
   const exportToExcel = async () => {
@@ -426,6 +383,7 @@ export default function CollectiveWeightsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-6">
@@ -442,16 +400,21 @@ export default function CollectiveWeightsPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <div className="flex items-center gap-2 px-3 py-1 rounded-lg border bg-white">
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    dbStatus === "connected" ? "bg-green-500" : dbStatus === "error" ? "bg-red-500" : "bg-yellow-500"
-                  }`}
-                />
-                <span className="text-sm font-medium">
-                  {dbStatus === "connected" ? "DB Bağlı" : dbStatus === "error" ? "DB Hatası" : "DB Kontrol..."}
-                </span>
-              </div>
+              {debugMode && (
+                <Button
+                  onClick={() => setDebugMode(!debugMode)}
+                  variant="outline"
+                  size="sm"
+                  className="bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
+                >
+                  Debug: {debugMode ? "ON" : "OFF"}
+                </Button>
+              )}
+              {!dbConnected && (
+                <Badge variant="destructive" className="mr-2">
+                  Veritabanı Bağlantısı Yok!
+                </Badge>
+              )}
               <Button onClick={refreshEvaluations} disabled={isRefreshing} variant="outline" size="sm">
                 <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
                 Yenile
@@ -479,6 +442,35 @@ export default function CollectiveWeightsPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
+          {/* Debug Panel */}
+          {debugMode && (
+            <Card className="border-yellow-200 bg-yellow-50">
+              <CardHeader>
+                <CardTitle className="text-yellow-800">Debug Bilgileri</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <strong>Toplam Değerlendirme:</strong> {evaluations.length}
+                  </div>
+                  <div>
+                    <strong>DB Bağlantısı:</strong> {dbConnected ? "✅ Bağlı" : "❌ Bağlı Değil"}
+                  </div>
+                  <div>
+                    <strong>Seçili (Analiz):</strong> {selectedEvaluations.length}
+                  </div>
+                  <div>
+                    <strong>Seçili (Silme):</strong> {selectedForDelete.length}
+                  </div>
+                  <div className="col-span-2">
+                    <strong>Seçili ID'ler (Silme):</strong> {selectedForDelete.join(", ") || "Yok"}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Özet Bilgiler */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardContent className="pt-6">
@@ -515,6 +507,7 @@ export default function CollectiveWeightsPage() {
             </Card>
           </div>
 
+          {/* Değerlendirme Seçimi */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -701,6 +694,7 @@ export default function CollectiveWeightsPage() {
             </CardContent>
           </Card>
 
+          {/* Ortalama Ağırlıklar */}
           {selectedEvaluations.length > 0 && (
             <Card>
               <CardHeader>
