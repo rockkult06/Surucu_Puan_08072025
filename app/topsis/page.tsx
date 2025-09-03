@@ -213,7 +213,7 @@ export default function TOPSISPage() {
 
       // Ana sonuçlar sayfası
       const wsData = [
-        ["Sıra", "Sürücü", "TOPSIS Puanı", "Yapılan KM"],
+                 ["Sıra", "Sürücü", "TOPSIS Puanı", "Çalışılan Saat"],
         ...results.map((result) => [
           result.rank,
           result.alternative,
@@ -372,8 +372,8 @@ export default function TOPSISPage() {
                   TOPSIS Analiz Sonuçları
                 </CardTitle>
                 <CardDescription>
-                  Sürücü performans sıralaması (Aynı puana sahip sürücüler arasında yapılan kilometre verisi yüksek olan
-                  üst sırada yer alır)
+                                     Sürücü performans sıralaması (Aynı puana sahip sürücüler arasında çalışılan saat verisi yüksek olan
+                   üst sırada yer alır)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -384,7 +384,7 @@ export default function TOPSISPage() {
                         <TableHead className="w-16">Sıra</TableHead>
                         <TableHead>Sürücü</TableHead>
                         <TableHead>TOPSIS Puanı</TableHead>
-                        <TableHead>Yapılan KM</TableHead>
+                                                  <TableHead>Çalışılan Saat</TableHead>
                         <TableHead>Performans</TableHead>
                       </TableRow>
                     </TableHeader>
