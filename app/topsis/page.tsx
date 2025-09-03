@@ -15,7 +15,7 @@ import { ArrowLeft, Upload, Download, Calculator, Trophy, TrendingUp, AlertCircl
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import * as XLSX from "xlsx"
-import { calculateTOPSIS, addDistanceDataToResults, type TOPSISResult } from "@/lib/topsis"
+import { calculateTOPSIS, calculateTOPSISDetailed, addDistanceDataToResults, type TOPSISResult, type TOPSISDetailedResult } from "@/lib/topsis"
 import { getAllAHPEvaluations, calculateAverageWeights, type AHPEvaluation } from "@/lib/api-client"
 import { getLeafCriteria } from "@/lib/criteria-hierarchy"
 
@@ -30,6 +30,7 @@ export default function TOPSISPage() {
   const [averageWeights, setAverageWeights] = useState<Record<string, number>>({})
   const [driverData, setDriverData] = useState<DriverData[]>([])
   const [results, setResults] = useState<TOPSISResult[]>([])
+  const [detailedResults, setDetailedResults] = useState<TOPSISDetailedResult | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAnalysisComplete, setIsAnalysisComplete] = useState(false)
@@ -140,22 +141,37 @@ export default function TOPSISPage() {
         }
       })
 
-      // Excel verilerinden kriter değerlerini çıkar
-      const matrix: number[][] = []
-      const distanceData: number[] = []
+             // Excel verilerinden kriter değerlerini çıkar
+       const matrix: number[][] = []
+       const distanceData: Record<string, number> = {}
 
       driverData.forEach((driver) => {
         const row: number[] = []
         let distanceTraveled = 0
 
-        // Yapılan Kilometre verisini bul
+        // Sürücü ID'sini al (Sicil No)
+        const firstColumnKey = Object.keys(driver)[0]
+        const driverID = String(driver[firstColumnKey] || "")
+
+        // Çalışılan Saat verisini bul
         const distanceKeys = Object.keys(driver).filter(
-          (key) => key.toLowerCase().includes("kilometre") || key.toLowerCase().includes("km"),
+          (key) => key.toLowerCase().includes("çalışılan saat") || key.toLowerCase().includes("çalışılan st"),
         )
-        if (distanceKeys.length > 0) {
+        if (distanceKeys.length === 0) {
+          // Fallback: hala kilometre arıyorsa
+          const fallbackKeys = Object.keys(driver).filter(
+            (key) => (key.toLowerCase().includes("saat") || key.toLowerCase().includes("st")) &&
+                     !key.toLowerCase().includes("oran") && !key.toLowerCase().includes("ratio")
+          )
+          if (fallbackKeys.length > 0) {
+            distanceTraveled = Number(driver[fallbackKeys[0]]) || 0
+          }
+        } else {
           distanceTraveled = Number(driver[distanceKeys[0]]) || 0
         }
-        distanceData.push(distanceTraveled)
+        
+        // Sürücü ID'sine göre map'e ekle
+        distanceData[driverID] = distanceTraveled
 
         // Her kriter için Excel'den değer bul
         leafCriteria.forEach((criterion) => {
@@ -183,20 +199,21 @@ export default function TOPSISPage() {
         matrix.push(row)
       })
 
-      // TOPSIS analizi çalıştır
-      const topsisResults = calculateTOPSIS({
-        alternatives,
-        criteria: criteriaNames,
-        matrix,
-        weights,
-        criteriaTypes,
-      })
+             // TOPSIS analizi çalıştır (detaylı)
+       const topsisDetailed = calculateTOPSISDetailed({
+         alternatives,
+         criteria: criteriaNames,
+         matrix,
+         weights,
+         criteriaTypes,
+       })
 
-      // Kilometre verisi ile tie-breaking uygula
-      const finalResults = addDistanceDataToResults(topsisResults, distanceData)
+       // Kilometre verisi ile tie-breaking uygula
+       const finalResults = addDistanceDataToResults(topsisDetailed.results, distanceData)
 
-      setResults(finalResults)
-      setIsAnalysisComplete(true)
+       setDetailedResults(topsisDetailed)
+       setResults(finalResults)
+       setIsAnalysisComplete(true)
     } catch (error) {
       console.error("TOPSIS analizi hatası:", error)
       setError("TOPSIS analizi sırasında hata oluştu: " + (error as Error).message)
@@ -205,35 +222,96 @@ export default function TOPSISPage() {
     }
   }, [driverData, averageWeights, leafCriteria])
 
-  const exportResults = useCallback(() => {
-    if (results.length === 0) return
+    const exportResults = useCallback(() => {
+    if (results.length === 0 || !detailedResults) {
+      setError("Dışa aktarılacak sonuç bulunamadı")
+      return
+    }
 
     try {
       const wb = XLSX.utils.book_new()
 
-      // Ana sonuçlar sayfası
+      // 1. Ana sonuçlar sayfası
       const wsData = [
-                 ["Sıra", "Sürücü", "TOPSIS Puanı", "Çalışılan Saat"],
+        ["Sıra", "Sürücü", "TOPSIS Puanı", "Çalışılan Saat"],
         ...results.map((result) => [
           result.rank,
           result.alternative,
-          result.closenessCoefficient.toFixed(4),
+          result.closenessCoefficient.toFixed(8),
           result.distanceTraveled || 0,
         ]),
       ]
-
       const ws = XLSX.utils.aoa_to_sheet(wsData)
       ws["!cols"] = [{ wch: 8 }, { wch: 15 }, { wch: 15 }, { wch: 12 }]
       XLSX.utils.book_append_sheet(wb, ws, "TOPSIS Sonuçları")
 
-      // Dosyayı indir
-      const fileName = `topsis_sonuclari_${new Date().toISOString().split("T")[0]}.xlsx`
+      // 2. Kriter ağırlıkları sayfası
+      const weightsData = [
+        ["Kriter", "Ağırlık", "Tip"],
+        ...detailedResults.criteria.map((criterion, index) => [
+          criterion,
+          detailedResults.weights[index].toFixed(6),
+          detailedResults.criteriaTypes[index] === "benefit" ? "Fayda" : "Maliyet"
+        ])
+      ]
+      const wsWeights = XLSX.utils.aoa_to_sheet(weightsData)
+      wsWeights["!cols"] = [{ wch: 25 }, { wch: 12 }, { wch: 10 }]
+      XLSX.utils.book_append_sheet(wb, wsWeights, "Kriter Ağırlıkları")
+
+      // 3. Karar matrisi sayfası
+      const decisionMatrixData = [
+        ["Sürücü", ...detailedResults.criteria],
+        ...detailedResults.alternatives.map((alternative, i) => [
+          alternative,
+          ...detailedResults.decisionMatrix[i].map(val => val.toFixed(4))
+        ])
+      ]
+      const wsDecision = XLSX.utils.aoa_to_sheet(decisionMatrixData)
+      XLSX.utils.book_append_sheet(wb, wsDecision, "Karar Matrisi")
+
+      // 4. Normalize edilmiş matris sayfası
+      const normalizedData = [
+        ["Sürücü", ...detailedResults.criteria],
+        ...detailedResults.alternatives.map((alternative, i) => [
+          alternative,
+          ...detailedResults.normalizedMatrix[i].map(val => val.toFixed(6))
+        ])
+      ]
+      const wsNormalized = XLSX.utils.aoa_to_sheet(normalizedData)
+      XLSX.utils.book_append_sheet(wb, wsNormalized, "Normalize Matris")
+
+      // 5. Ağırlıklı normalize matris sayfası
+      const weightedData = [
+        ["Sürücü", ...detailedResults.criteria],
+        ...detailedResults.alternatives.map((alternative, i) => [
+          alternative,
+          ...detailedResults.weightedMatrix[i].map(val => val.toFixed(6))
+        ])
+      ]
+      const wsWeighted = XLSX.utils.aoa_to_sheet(weightedData)
+      XLSX.utils.book_append_sheet(wb, wsWeighted, "Ağırlıklı Normalize Matris")
+
+      // 6. İdeal çözümler sayfası
+      const idealData = [
+        ["Kriter", "İdeal Pozitif Çözüm", "İdeal Negatif Çözüm", "Tip"],
+        ...detailedResults.criteria.map((criterion, index) => [
+          criterion,
+          detailedResults.idealSolution[index].toFixed(6),
+          detailedResults.negativeIdealSolution[index].toFixed(6),
+          detailedResults.criteriaTypes[index] === "benefit" ? "Fayda" : "Maliyet"
+        ])
+      ]
+      const wsIdeal = XLSX.utils.aoa_to_sheet(idealData)
+      wsIdeal["!cols"] = [{ wch: 25 }, { wch: 18 }, { wch: 18 }, { wch: 10 }]
+      XLSX.utils.book_append_sheet(wb, wsIdeal, "İdeal Çözümler")
+
+      const fileName = `topsis_detayli_sonuclari_${new Date().toISOString().split("T")[0]}.xlsx`
       XLSX.writeFile(wb, fileName)
     } catch (error) {
       console.error("Export hatası:", error)
       setError("Sonuçlar dışa aktarılırken hata oluştu")
     }
-  }, [results])
+  }, [results, detailedResults])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -254,10 +332,10 @@ export default function TOPSISPage() {
               </div>
             </div>
             {isAnalysisComplete && (
-              <Button onClick={exportResults} className="bg-green-600 hover:bg-green-700">
-                <Download className="h-4 w-4 mr-2" />
-                Sonuçları İndir
-              </Button>
+                              <Button onClick={exportResults} className="bg-green-600 hover:bg-green-700">
+                  <Download className="h-4 w-4 mr-2" />
+                  Detaylı Sonuçları İndir
+                </Button>
             )}
           </div>
         </div>
